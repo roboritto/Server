@@ -21,6 +21,6 @@ Custom Movies
 
 Website sharing  
 13. if you are sharing this website with other people, just repeat step 10.  
-14. you can also block other ip from seeing a specific movie by adding their ip address and the movie id in block_ip.json.  
+14. you can also block other ip from seeing a specific movie by adding their ip address and the movie id in hidden_movies.json.  
 15. these other ips would also be blocked from doing some actions like deleting movies.  
 
