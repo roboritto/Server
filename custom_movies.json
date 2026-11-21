@@ -1,0 +1,27 @@
+{
+  "8000000": {
+    "title": "My Custom Movie",
+    "release_date": "2024-08-15",
+    "runtime": 112,
+    "genres": ["Action", "Science Fiction"],
+    "overview": "A short synopsis of the movie.",
+    "poster_path": "/custom_images/8000000_poster.jpg",
+    "backdrop_path": "/custom_images/8000000_backdrop.jpg",
+    "directors": [
+      {
+        "id": null,
+        "name": "Director Name",
+        "profile_path": "/custom_images/director_name.jpg"
+      }
+    ],
+    "cast": [
+      {
+        "id": null,
+        "name": "Actor One",
+        "character": "Main Character",
+        "profile_path": "/custom_images/actor_one.jpg"
+      },
+      "Actor Two"
+    ]
+  }
+}

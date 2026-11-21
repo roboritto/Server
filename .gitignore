@@ -1,6 +1,5 @@
 .env
 __pycache__/
-bones_index.html
 start_server.bat
 invisible.vbs
 startup_log.txt
@@ -10,5 +9,3 @@ script.js
 style.css
 settings.json
 known_movies.json
-custom_movies.json
-hidden_movies.json
