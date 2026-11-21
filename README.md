@@ -1,4 +1,4 @@
-This is basically a website version of the [movie database](https://github.com/roboritto/MovieDatabase). It uses tailscale to connect devices to the server. This service is similar to plex though you don’t necessarily need to have the file on the computer, though that’s possible too. You can visit https://roboritto.github.io/Server/ to see how the website function before downloading. Note that certain features won’t be available since it needs your tmdb api key or have other dependencies. 
+This is basically a website version of the [movie database](https://github.com/roboritto/MovieDatabase). It uses tailscale to connect devices to the server. This service is similar to plex though you don’t necessarily need to have the file on the computer, though that’s possible too. You can visit https://roboritto.github.io/Server/ to see how the website function before downloading. Note that certain features won’t be available since it needs your tmdb api key or main.py to be running. 
 
 you should obtain your tmdb api key before following this guide. 
 
