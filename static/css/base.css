@@ -1,0 +1,148 @@
+/* --- Theme Variables (Edit here to re-theme the site) --- */
+:root {
+    /* Surfaces & Backgrounds */
+    --bg-primary: #0f172a;
+    --bg-surface: #1e293b;
+    --bg-surface-hover: #334155;
+    --bg-black: #000000;
+
+    /* Borders */
+    --border-color: #334155;
+    --border-hover: #64748b;
+
+    /* Text */
+    --text-primary: #f8fafc;
+    --text-white: #ffffff;
+    --text-secondary: #e2e8f0;
+    --text-light: #cbd5e1;
+    --text-muted: #94a3b8;
+    --text-dim: #64748b;
+
+    /* Accents & Status */
+    --accent-blue: #3b82f6;
+    --accent-blue-hover: #2563eb;
+    --accent-sky: #38bdf8;
+    --accent-red: #ef4444;
+    --accent-red-hover: #dc2626;
+    --accent-red-soft: #fca5a5;
+    --accent-red-light: #f87171;
+    --accent-green: #22c55e;
+    --accent-green-light: #4ade80;
+    --btn-disabled: #475569;
+
+    /* Layout Dimensions */
+    --nav-width: 80px;
+    --mobile-nav-height: 64px;
+}
+
+/* --- Global Reset & Base --- */
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+body {
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    min-height: 100vh;
+}
+
+.hidden {
+    display: none !important;
+}
+
+/* --- Global Top Loading Bar --- */
+#top-loading-bar-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 3px;
+    background-color: rgba(30, 41, 59, 0.6);
+    z-index: 9999; /* Stays on top of navbars, backdrops, and modals */
+    pointer-events: none;
+}
+
+#top-loading-bar {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, var(--accent-blue), var(--accent-sky));
+    box-shadow: 0 0 8px rgba(56, 189, 248, 0.7);
+    transition: width 0.25s ease-out;
+}
+
+/* --- Auth Screen Styles --- */
+#auth-screen {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 1rem;
+}
+
+#auth-card {
+    background-color: var(--bg-surface);
+    padding: 2rem;
+    border-radius: 0.75rem;
+    width: 100%;
+    max-width: 400px;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+    text-align: center;
+}
+
+#auth-title {
+    font-size: 1.5rem;
+    margin-bottom: 0.5rem;
+}
+
+#auth-subtitle {
+    font-size: 0.875rem;
+    color: var(--text-muted);
+    margin-bottom: 1.5rem;
+}
+
+#token-input {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    border-radius: 0.5rem;
+    border: 1px solid var(--border-color);
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: 1rem;
+    margin-bottom: 1rem;
+    outline: none;
+}
+
+#token-input:focus {
+    border-color: var(--accent-blue);
+}
+
+#auth-submit-btn {
+    width: 100%;
+    padding: 0.75rem;
+    border: none;
+    border-radius: 0.5rem;
+    background-color: var(--accent-blue);
+    color: var(--text-white);
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+#auth-submit-btn:hover {
+    background-color: var(--accent-blue-hover);
+}
+
+#auth-submit-btn:disabled {
+    background-color: var(--btn-disabled);
+    cursor: not-allowed;
+}
+
+#auth-error {
+    color: var(--accent-red);
+    font-size: 0.875rem;
+    margin-top: 1rem;
+}

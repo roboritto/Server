@@ -1,0 +1,14 @@
+.env
+__pycache__/
+bones_index.html
+start_server.bat
+invisible.vbs
+startup_log.txt
+main_deprecated.py
+build_demo.py
+script.js
+style.css
+settings.json
+known_movies.json
+custom_movies.json
+hidden_movies.json

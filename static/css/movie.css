@@ -1,0 +1,399 @@
+/* --- Movie Detail Page Base (Edge-to-Edge Black Canvas) --- */
+#movie-page {
+    padding-top: 0 !important;
+    margin-left: -2rem;
+    margin-right: -2rem;
+    background-color: var(--bg-black);
+    min-height: 100vh;
+}
+
+/* --- Backdrop & Hero Content --- */
+#movie-hero-backdrop {
+    position: relative;
+    width: 100%;
+    min-height: 75vh;
+    background-color: var(--bg-black);
+    display: flex;
+    align-items: flex-end;
+    padding: 6.5rem 3rem 2.5rem 3rem;
+    overflow: hidden;
+}
+
+#movie-backdrop-image {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 75vh;
+    max-height: 680px;
+    background-size: cover;
+    background-position: center top;
+    background-repeat: no-repeat;
+    background-color: var(--bg-black);
+    pointer-events: none;
+}
+
+#movie-backdrop-gradient {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+        to bottom,
+        rgba(0, 0, 0, 0.15) 0%,
+        rgba(0, 0, 0, 0.4) 50%,
+        var(--bg-black) 100%
+    );
+    pointer-events: none;
+}
+
+/* Top-Right Remove Movie Button (Scrolls with backdrop, non-floating) */
+#delete-movie-btn {
+    position: absolute;
+    top: 1.5rem;
+    right: 1.5rem;
+    z-index: 3;
+    width: 46px;
+    height: 46px;
+    border-radius: 50%;
+    border: 1px solid var(--border-color);
+    background-color: rgba(30, 41, 59, 0.85);
+    backdrop-filter: blur(6px);
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.45);
+    transition: background-color 0.2s, border-color 0.2s, color 0.2s, transform 0.2s;
+}
+
+#delete-movie-btn:hover:not(:disabled) {
+    background-color: rgba(239, 68, 68, 0.9);
+    border-color: var(--accent-red);
+    color: var(--text-white);
+    transform: scale(1.06);
+}
+
+#delete-movie-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+#delete-movie-btn svg {
+    width: 22px;
+    height: 22px;
+}
+
+#movie-hero-content {
+    position: relative;
+    z-index: 2;
+    max-width: 800px;
+    width: 100%;
+    text-align: left;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+}
+
+#movie-release-year {
+    font-size: 0.85rem;
+    font-weight: 700;
+    letter-spacing: 0.28em;
+    color: var(--accent-sky);
+    text-transform: uppercase;
+    margin-bottom: -0.35rem;
+}
+
+#movie-title {
+    font-size: 2.75rem;
+    font-weight: 800;
+    line-height: 1.15;
+    color: var(--text-white);
+}
+
+#movie-directors {
+    font-size: 1.05rem;
+    color: var(--text-light);
+}
+
+.director-link {
+    color: var(--text-primary);
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    transition: color 0.15s;
+}
+
+.director-link:hover {
+    color: var(--accent-blue);
+}
+
+/* --- Rating Hearts & Last Watch Row --- */
+#movie-rating-row {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    margin: 0.15rem 0;
+}
+
+#movie-hearts {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    color: var(--accent-red);
+}
+
+.rating-heart-icon {
+    width: 20px;
+    height: 20px;
+    display: block;
+}
+
+#movie-last-watch {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+}
+
+#movie-synopsis {
+    font-size: 1rem;
+    line-height: 1.6;
+    color: var(--text-secondary);
+    max-width: 720px;
+    margin-top: 0.25rem;
+}
+
+/* --- Action Buttons Row (Download, Rate, Collection, Add Link) --- */
+#movie-actions-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+    margin-top: 0.75rem;
+}
+
+.download-link-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.65rem 1.25rem;
+    border: none;
+    border-radius: 0.5rem;
+    background-color: var(--accent-blue);
+    color: var(--text-white);
+    font-weight: 600;
+    font-size: 0.95rem;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.download-link-btn:hover {
+    background-color: var(--accent-blue-hover);
+}
+
+.download-link-btn svg {
+    width: 18px;
+    height: 18px;
+}
+
+.movie-icon-action-btn {
+    width: 44px;
+    height: 44px;
+    border-radius: 0.5rem;
+    border: 1px solid var(--border-color);
+    background-color: rgba(30, 41, 59, 0.85);
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background-color 0.2s, border-color 0.2s, color 0.2s;
+}
+
+.movie-icon-action-btn:hover {
+    background-color: var(--bg-surface-hover);
+    border-color: var(--border-hover);
+}
+
+#open-rating-modal-btn:hover {
+    color: var(--accent-red);
+}
+
+.movie-icon-action-btn svg {
+    width: 20px;
+    height: 20px;
+}
+
+/* --- Below Backdrop: Cast & Collections --- */
+#movie-details-body {
+    padding: 2rem 3rem 4rem 3rem;
+    display: flex;
+    flex-direction: column;
+    gap: 2.75rem;
+}
+
+#movie-cast-list {
+    display: flex;
+    gap: 1rem;
+    overflow-x: auto;
+    padding-bottom: 0.75rem;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-color) transparent;
+}
+
+.cast-card {
+    flex: 0 0 140px;
+    background-color: var(--bg-surface);
+    border-radius: 0.65rem;
+    overflow: hidden;
+    cursor: pointer;
+    text-align: left;
+    transition: transform 0.2s;
+}
+
+.cast-card:hover {
+    transform: translateY(-4px);
+}
+
+.cast-card-img {
+    width: 100%;
+    height: 190px;
+    object-fit: cover;
+    background-color: var(--bg-primary);
+    display: block;
+}
+
+.cast-card-placeholder {
+    width: 100%;
+    height: 190px;
+    background-color: var(--bg-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-dim);
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.cast-card-info {
+    padding: 0.65rem 0.75rem;
+}
+
+.cast-card-name {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.cast-card-character {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-top: 0.15rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* --- Collections Section & Download All Button --- */
+#movie-collections-container {
+    display: flex;
+    flex-direction: column;
+    gap: 2.25rem;
+}
+
+.collection-header-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.85rem;
+    margin-bottom: 1rem;
+}
+
+.collection-header-row .movie-section-heading {
+    margin-bottom: 0;
+}
+
+.collection-download-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.42rem 0.85rem;
+    border-radius: 0.5rem;
+    border: 1px solid var(--border-color);
+    background-color: var(--bg-surface);
+    color: var(--text-primary);
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s, border-color 0.2s, opacity 0.2s;
+}
+
+.collection-download-btn:hover:not(:disabled) {
+    background-color: var(--accent-blue);
+    border-color: var(--accent-blue);
+    color: var(--text-white);
+}
+
+.collection-download-btn:disabled {
+    opacity: 0.6;
+    cursor: wait;
+}
+
+.collection-download-btn svg {
+    width: 15px;
+    height: 15px;
+    flex-shrink: 0;
+}
+
+.collection-list {
+    display: flex;
+    gap: 1.25rem;
+    overflow-x: auto;
+    padding: 0.25rem 0.25rem 0.85rem 0.25rem;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-color) transparent;
+}
+
+.collection-card {
+    flex: 0 0 280px;
+    height: 158px;
+    border-radius: 0.65rem;
+    overflow: hidden;
+    position: relative;
+    background-color: var(--bg-black);
+    background-size: cover;
+    background-position: center;
+    background-clip: padding-box;
+    cursor: pointer;
+    border: 2px solid var(--bg-black);
+    outline: none;
+    transition: transform 0.2s, border-color 0.2s;
+    display: flex;
+    align-items: flex-end;
+}
+
+.collection-card:hover {
+    transform: translateY(-3px);
+}
+
+.collection-card.current-collection-movie {
+    border-color: var(--text-white);
+}
+
+.collection-card-overlay {
+    width: 100%;
+    padding: 2rem 0.85rem 0.75rem 0.85rem;
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.9) 0%, transparent 100%);
+    text-align: left;
+}
+
+.collection-card-title {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--text-white);
+}

@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <title>Cinema</title>
+    <link rel="stylesheet" href="/css/base.css">
+    <link rel="stylesheet" href="/css/layout.css">
+    <link rel="stylesheet" href="/css/components.css">
+    <link rel="stylesheet" href="/css/home.css">
+    <link rel="stylesheet" href="/css/movie.css">
+    <link rel="stylesheet" href="/css/rated.css">
+    <link rel="stylesheet" href="/css/person.css">
+    <link rel="stylesheet" href="/css/modals.css">
+    <link rel="stylesheet" href="/css/responsive.css">
+</head>
+<body>
+
+    <!-- Global Top Loading Progress Bar -->
+    <div id="top-loading-bar-container" class="hidden">
+        <div id="top-loading-bar"></div>
+    </div>
+    
+    <!-- 1. Authentication Screen -->
+    <div id="auth-screen">
+        <div id="auth-card">
+            <h1 id="auth-title">Cinema</h1>
+            <p id="auth-subtitle">Enter your server API token to continue</p>
+            <form id="auth-form">
+                <input type="password" id="token-input" placeholder="Server API Token" required autocomplete="off">
+                <button type="submit" id="auth-submit-btn">Unlock Database</button>
+            </form>
+            <p id="auth-error" class="hidden">Invalid API Token. Please try again.</p>
+        </div>
+    </div>
+
+    <!-- 2. Main Application Container -->
+    <div id="app-container" class="hidden">
+        
+        <!-- Navigation Bar (Left on Desktop, Top on Mobile) -->
+        <nav id="main-nav" class="mobile-nav-hidden">
+            <button id="nav-home-btn" class="nav-btn active" title="Home">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                    <polyline points="9 22 9 12 15 12 15 22"></polyline>
+                </svg>
+                <span class="nav-label">Home</span>
+            </button>
+            <button id="nav-search-btn" class="nav-btn" title="Search Database">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                </svg>
+                <span class="nav-label">Search</span>
+            </button>
+            <button id="nav-rated-btn" class="nav-btn" title="Rated & Reviewed">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+                </svg>
+                <span class="nav-label">Rated</span>
+            </button>
+            <button id="nav-random-btn" class="nav-btn" title="Random Movie">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                    <!-- 3D Cube Outline -->
+                    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+                    <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+                    <line x1="12" y1="22.08" x2="12" y2="12"></line>
+                    <!-- Dice Pips (Dots) -->
+                    <circle cx="12" cy="7" r="1.2" fill="currentColor" stroke="none"></circle>
+                    <circle cx="7.5" cy="12.5" r="1.1" fill="currentColor" stroke="none"></circle>
+                    <circle cx="7.5" cy="16.5" r="1.1" fill="currentColor" stroke="none"></circle>
+                    <circle cx="16.5" cy="12" r="1.1" fill="currentColor" stroke="none"></circle>
+                    <circle cx="16.5" cy="15" r="1.1" fill="currentColor" stroke="none"></circle>
+                    <circle cx="16.5" cy="18" r="1.1" fill="currentColor" stroke="none"></circle>
+                </svg>
+                <span class="nav-label">Random</span>
+            </button>
+            <button id="nav-add-btn" class="nav-btn" title="Add Movie (TMDB)">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="12" y1="5" x2="12" y2="19"></line>
+                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                </svg>
+                <span class="nav-label">Add</span>
+            </button>
+        </nav>
+
+        <!-- Back Button (Visible ONLY on Movie Page and Person Page) -->
+        <button id="page-back-btn" class="floating-nav-btn hidden" title="Go Back">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="19" y1="12" x2="5" y2="12"></line>
+                <polyline points="12 19 5 12 12 5"></polyline>
+            </svg>
+        </button>
+
+        <!-- Scroll to Top Button (Visible on all pages when scrolled down) -->
+        <button id="scroll-top-btn" class="floating-nav-btn hidden" title="Scroll to Top">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="19" x2="12" y2="5"></line>
+                <polyline points="5 12 12 5 19 12"></polyline>
+            </svg>
+        </button>
+
+        <!-- Floating Alphabet Jump Bar (Visible ONLY when All Movies section is in full view) -->
+        <div id="floating-alphabet-bar" class="hidden"></div>
+
+        <!-- Main Content Area (Pages) -->
+        <main id="content-area">
+            
+            <!-- Page 1: Home Page -->
+            <section id="home-page" class="page-view">
+                
+                <!-- Full-Viewport Hero Section (Only search bar visible until scrolled) -->
+                <div id="home-hero-section">
+                    <form id="home-search-form">
+                        <div id="home-search-wrapper">
+                            <svg class="search-bar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="11" cy="11" r="8"></circle>
+                                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                            </svg>
+                            <input type="text" id="home-search-input" placeholder="Search your movie database..." autocomplete="off">
+                        </div>
+                        <!-- Dropdown results for Home Search Bar -->
+                        <div id="home-search-results" class="search-results-container hidden"></div>
+                    </form>
+                </div>
+
+                <!-- Below-the-Fold Content Area (Only visible when scrolling down) -->
+                <div id="home-below-fold">
+                    <div id="home-random-section" class="home-section hidden">
+                        <div class="home-section-header">
+                            <h2 class="movie-section-heading">Random Movies</h2>
+                            <button id="home-reroll-random-btn" class="dice-reroll-btn" title="Randomize Movies">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                                    <!-- 3D Cube Outline -->
+                                    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+                                    <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+                                    <line x1="12" y1="22.08" x2="12" y2="12"></line>
+                                    <!-- Dice Pips (Dots) -->
+                                    <circle cx="12" cy="7" r="1.2" fill="currentColor" stroke="none"></circle>
+                                    <circle cx="7.5" cy="12.5" r="1.1" fill="currentColor" stroke="none"></circle>
+                                    <circle cx="7.5" cy="16.5" r="1.1" fill="currentColor" stroke="none"></circle>
+                                    <circle cx="16.5" cy="12" r="1.1" fill="currentColor" stroke="none"></circle>
+                                    <circle cx="16.5" cy="15" r="1.1" fill="currentColor" stroke="none"></circle>
+                                    <circle cx="16.5" cy="18" r="1.1" fill="currentColor" stroke="none"></circle>
+                                </svg>
+                            </button>
+                        </div>
+                        <div id="home-random-grid" class="movies-horizontal-list"></div>
+                    </div>
+
+                    <!-- All Movies Section (Alphabetical Grid with Collapsible Genre & Alphabet Filters) -->
+                    <div id="home-all-movies-section" class="home-section hidden">
+                        <div class="home-section-header all-movies-header">
+                            <div class="all-movies-title-group">
+                                <h2 class="movie-section-heading">All Movies</h2>
+                                <span id="all-movies-count-badge" class="movies-count-badge">0</span>
+                            </div>
+                            <div class="all-movies-filter-controls">
+                                <button id="filter-new-btn" class="filter-control-btn" type="button">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M12 3l1.9 5.8L20 10.7l-6.1 1.9L12 18.5l-1.9-5.9L4 10.7l6.1-1.9L12 3z"></path>
+                                    </svg>
+                                    <span>New</span>
+                                </button>
+                                <button id="toggle-filters-btn" class="filter-control-btn" type="button">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
+                                    </svg>
+                                    <span>Filters</span>
+                                    <svg id="filter-chevron-icon" class="chevron-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <polyline points="6 9 12 15 18 9"></polyline>
+                                    </svg>
+                                </button>
+                                <button id="clear-all-filters-btn" class="clear-filters-btn hidden" type="button">Clear Filters</button>
+                            </div>
+                        </div>
+
+                        <!-- Collapsible Filter Panel -->
+                        <div id="all-movies-filters-drawer" class="filters-drawer hidden">
+                            <div class="filter-group">
+                                <div class="filter-group-label">
+                                    <span>Genres</span>
+                                    <span class="filter-hint">Tap once to include (+), twice to exclude (−)</span>
+                                </div>
+                                <div id="genre-filters-list" class="genre-chips-container"></div>
+                            </div>
+                        </div>
+
+                        <!-- All Movies Grid -->
+                        <div id="home-all-movies-grid" class="movies-grid"></div>
+                    </div>
+                </div>
+
+            </section>
+
+            <!-- Page 2: Rated & Reviewed Movies Page -->
+            <section id="rated-page" class="page-view hidden">
+                <div id="rated-page-header">
+                    <div class="rated-title-group">
+                        <h1 class="page-title">Rated Movies</h1>
+                        <span id="rated-movies-count-badge" class="movies-count-badge">0</span>
+                    </div>
+
+                    <div id="rated-filter-hearts">
+                        <div class="rated-filter-heart" data-heart-index="1"></div>
+                        <div class="rated-filter-heart" data-heart-index="2"></div>
+                        <div class="rated-filter-heart" data-heart-index="3"></div>
+                        <div class="rated-filter-heart" data-heart-index="4"></div>
+                        <div class="rated-filter-heart" data-heart-index="5"></div>
+                    </div>
+                </div>
+
+                <div id="rated-movies-grid" class="movies-grid"></div>
+            </section>
+
+            <!-- Page 4: Movie Detail Page -->
+            <section id="movie-page" class="page-view hidden">
+                
+                <!-- Backdrop Hero Section -->
+                <div id="movie-hero-backdrop">
+                    <!-- Standardized Backdrop Image Layer (Capped height, fills remainder with black) -->
+                    <div id="movie-backdrop-image">
+                        <div id="movie-backdrop-gradient"></div>
+                    </div>
+
+                    <!-- Top-Right Remove Movie Button (Anchored to page top, non-floating) -->
+                    <button id="delete-movie-btn" type="button" title="Remove Movie from Database">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                        </svg>
+                    </button>
+
+                    <div id="movie-hero-content">
+                        <!-- Release Year styled like 'FILM' above the title -->
+                        <span id="movie-release-year"></span>
+                        <h1 id="movie-title"></h1>
+                        <div id="movie-directors"></div>
+                        
+                        <!-- Shown ONLY if movie has a rating > 0 -->
+                        <div id="movie-rating-row" class="hidden">
+                            <div id="movie-hearts"></div>
+                            <span id="movie-last-watch"></span>
+                        </div>
+
+                        <p id="movie-synopsis"></p>
+
+                        <!-- Single Download Popup Button + Rate Heart Button + Add to Collection Button -->
+                        <div id="movie-actions-row">
+                            <button id="open-download-modal-btn" class="download-link-btn" title="Download Movie">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                    <polyline points="7 10 12 15 17 10"></polyline>
+                                    <line x1="12" y1="15" x2="12" y2="3"></line>
+                                </svg>
+                                <span>Download</span>
+                            </button>
+                            
+                            <button id="open-rating-modal-btn" class="movie-icon-action-btn" title="Rate or Review Movie">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
+                                </svg>
+                            </button>
+
+                            <button id="open-collection-modal-btn" class="movie-icon-action-btn" title="Add to Collection">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <line x1="8" y1="6" x2="21" y2="6"></line>
+                                    <line x1="8" y1="12" x2="21" y2="12"></line>
+                                    <line x1="8" y1="18" x2="21" y2="18"></line>
+                                    <line x1="3" y1="6" x2="3.01" y2="6"></line>
+                                    <line x1="3" y1="12" x2="3.01" y2="12"></line>
+                                    <line x1="3" y1="18" x2="3.01" y2="18"></line>
+                                </svg>
+                            </button>
+
+                            <button id="open-add-link-modal-btn" class="movie-icon-action-btn" title="Add Download Link">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                                    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Below Backdrop: Cast & Collections -->
+                <div id="movie-details-body">
+                    <div id="movie-cast-section">
+                        <h2 class="movie-section-heading">Cast</h2>
+                        <div id="movie-cast-list"></div>
+                    </div>
+
+                    <div id="movie-collections-container"></div>
+                </div>
+
+            </section>
+
+            <!-- Page 5: Person (Actor / Director) Detail Page -->
+            <section id="person-page" class="page-view hidden">
+                <div id="person-header">
+                    <div id="person-avatar-container"></div>
+                    <div id="person-header-info">
+                        <span id="person-role-label"></span>
+                        <h1 id="person-name"></h1>
+                    </div>
+                </div>
+
+                <div id="person-filmography-section">
+                    <h2 class="movie-section-heading">Filmography</h2>
+                    <div id="person-movies-grid" class="movies-grid"></div>
+                </div>
+            </section>
+
+        </main>
+
+        <!-- Popup 1: Search Database Modal -->
+        <div id="db-search-modal" class="modal-overlay hidden">
+            <div id="db-search-modal-content" class="modal-box search-modal-box">
+                <button id="close-db-search-btn" class="modal-close-btn">×</button>
+                <h2 class="modal-title">Search Database</h2>
+                <form id="modal-search-form">
+                    <div id="modal-search-wrapper">
+                        <svg class="search-bar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="11" cy="11" r="8"></circle>
+                            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                        </svg>
+                        <input type="text" id="modal-search-input" placeholder="Search movies, actors, directors..." autocomplete="off">
+                    </div>
+                </form>
+                <div id="modal-search-results" class="search-results-container"></div>
+            </div>
+        </div>
+
+        <!-- Popup 2: Add Movie via TMDB Modal -->
+        <div id="tmdb-add-modal" class="modal-overlay hidden">
+            <div id="tmdb-add-modal-content" class="modal-box search-modal-box">
+                <button id="close-tmdb-add-btn" class="modal-close-btn">×</button>
+                <h2 class="modal-title">Add Movie from TMDB</h2>
+                <form id="tmdb-search-form">
+                    <div id="tmdb-search-wrapper">
+                        <svg class="search-bar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="11" cy="11" r="8"></circle>
+                            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                        </svg>
+                        <input type="text" id="tmdb-search-input" placeholder="Search TMDB to add a movie..." autocomplete="off">
+                    </div>
+                </form>
+                <div id="tmdb-search-results" class="search-results-container"></div>
+            </div>
+        </div>
+
+        <!-- Popup 3: Rating & Review Modal -->
+        <div id="rating-modal" class="modal-overlay hidden">
+            <div id="rating-modal-content" class="modal-box rating-modal-box">
+                <button id="close-rating-modal-btn" class="modal-close-btn">×</button>
+                <h2 class="modal-title">Rate & Review</h2>
+                
+                <form id="rating-form">
+                    <!-- 5 Interactive Hearts (Supports 0.5 increments by tapping left/right half) -->
+                    <div id="rating-hearts-selector">
+                        <div class="interactive-heart" data-heart-index="1"></div>
+                        <div class="interactive-heart" data-heart-index="2"></div>
+                        <div class="interactive-heart" data-heart-index="3"></div>
+                        <div class="interactive-heart" data-heart-index="4"></div>
+                        <div class="interactive-heart" data-heart-index="5"></div>
+                    </div>
+                    <div id="rating-value-display">0.0 / 5.0</div>
+
+                    <!-- Review Textbox -->
+                    <textarea id="review-textarea" rows="5" placeholder="Write your review here..."></textarea>
+
+                    <!-- Save & Clear Buttons -->
+                    <div id="rating-modal-actions">
+                        <button type="button" id="clear-rating-btn">Clear Rating</button>
+                        <button type="submit" id="save-rating-btn">Save Review</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Popup 4: Add to Collection Modal -->
+        <div id="collection-modal" class="modal-overlay hidden">
+            <div id="collection-modal-content" class="modal-box collection-modal-box">
+                <button id="close-collection-modal-btn" class="modal-close-btn">×</button>
+                <h2 class="modal-title">Add to Collection</h2>
+                
+                <!-- Top Search / New Collection Bar + Add Button -->
+                <form id="collection-search-form">
+                    <input type="text" id="collection-search-input" placeholder="Search or create collection..." autocomplete="off">
+                    <button type="submit" id="add-new-collection-btn">Add</button>
+                </form>
+
+                <!-- Scrollable List of Existing Collections with Checkmarks -->
+                <div id="collection-list-container"></div>
+            </div>
+        </div>
+
+        <!-- Popup 5: Download Links Modal -->
+        <div id="download-modal" class="modal-overlay hidden">
+            <div id="download-modal-content" class="modal-box download-modal-box">
+                <button id="close-download-modal-btn" class="modal-close-btn">×</button>
+                <h2 class="modal-title">Download Links</h2>
+                <div id="download-modal-links"></div>
+            </div>
+        </div>
+
+        <!-- Popup 6: Confirm Remove Movie Modal -->
+        <div id="delete-movie-modal" class="modal-overlay hidden">
+            <div id="delete-movie-modal-content" class="modal-box delete-modal-box">
+                <button id="close-delete-modal-btn" class="modal-close-btn">×</button>
+                <h2 class="modal-title">Remove Movie</h2>
+                <p id="delete-movie-confirm-text">
+                    Remove <strong id="delete-movie-target-title"></strong> from your database?
+                </p>
+                <p class="delete-movie-subtext">This will delete it from your CSV along with its rating and review.</p>
+                <div id="delete-modal-actions">
+                    <button type="button" id="cancel-delete-movie-btn">Cancel</button>
+                    <button type="button" id="confirm-delete-movie-btn">Remove</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Popup 7: Add Download Link Modal -->
+        <div id="add-link-modal" class="modal-overlay hidden">
+            <div id="add-link-modal-content" class="modal-box add-link-modal-box">
+                <button id="close-add-link-modal-btn" class="modal-close-btn">×</button>
+                <h2 class="modal-title">Add Download Link</h2>
+                <form id="add-link-form">
+                    <input type="text" id="add-link-input" placeholder="Paste movie link..." required autocomplete="off">
+                    <button type="submit" id="save-add-link-btn">Add Link</button>
+                </form>
+            </div>
+        </div>
+
+    </div>
+
+    <script type="module" src="/js/main.js"></script>
+</body>
+</html>
