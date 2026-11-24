@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from pydantic import BaseModel
 
 
@@ -23,3 +23,6 @@ class CollectionDownloadRequest(BaseModel):
     collection: str
     titles: dict[str, str] = {}
     movie_order: List[str] = []
+
+class TmdbCacheUpdate(BaseModel):
+    entries: Dict[str, Dict[str, Any]]

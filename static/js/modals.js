@@ -1,4 +1,4 @@
-import { TMDB_CACHE_KEY, MAX_SEARCH_RESULTS } from './config.js';
+import { MAX_SEARCH_RESULTS } from './config.js';
 import { state } from './state.js';
 import { dom } from './dom.js';
 import {
@@ -7,7 +7,12 @@ import {
     parseCollectionArray,
     parseLinkArray
 } from './utils.js';
-import { isMovieInDatabase, fetchSingleTmdbMovie, rebuildPeopleIndex } from './api.js';
+import {
+    isMovieInDatabase,
+    fetchSingleTmdbMovie,
+    rebuildPeopleIndex,
+    saveTmdbCacheEntries
+} from './api.js';
 import { openModal, closeModal, goBackPage } from './navigation.js';
 import { getFuzzyScore } from './search.js';
 import { renderHomeAllMovies, renderHomeRandomMovies } from './home.js';
@@ -131,10 +136,8 @@ async function handleAddMovieFromTmdb(movieId, buttonEl) {
         }
 
         const tmdbInfo = await fetchSingleTmdbMovie(idStr);
-        try {
-            localStorage.setItem(TMDB_CACHE_KEY, JSON.stringify(state.tmdbCache));
-        } catch (e) {
-            console.warn('Could not update TMDB cache:', e);
+        if (tmdbInfo) {
+            await saveTmdbCacheEntries({ [idStr]: tmdbInfo });
         }
 
         state.rawCsvMovies.push({

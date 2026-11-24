@@ -13,6 +13,7 @@ CSV_FILE = os.getenv("CSV_FILE", "movie_database.csv")
 CUSTOM_MOVIES_FILE = os.getenv("CUSTOM_MOVIES_FILE", "custom_movies.json")
 KNOWN_MOVIES_FILE = os.getenv("KNOWN_MOVIES_FILE", "known_movies.json")
 HIDDEN_MOVIES_FILE = os.getenv("HIDDEN_MOVIES_FILE", "hidden_movies.json")
+TMDB_CACHE_FILE = os.getenv("TMDB_CACHE_FILE", "tmdb_cache.json")
 
 CSV_FIELDNAMES = ["movie_id", "link", "rating", "last_watch", "review", "collection"]
 

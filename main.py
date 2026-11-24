@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Header, HTTPException, Request, Security
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -9,18 +10,22 @@ from backend.downloads import (
     create_download_ticket,
     movie_in_collection,
 )
-from backend.models import CollectionDownloadRequest, Movie, MovieUpdate
+from backend.models import CollectionDownloadRequest, Movie, MovieUpdate, TmdbCacheUpdate
 from backend.storage import (
     attach_is_new_flags,
     get_client_ip,
     get_hidden_ids_for_request,
     load_custom_movies,
+    load_tmdb_cache,
+    merge_tmdb_cache,
     read_csv,
     remove_from_known_movies,
+    remove_from_tmdb_cache,
     write_csv,
 )
 
 app = FastAPI(title="Cine.ma API")
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 
 # --- Security Dependency ---
@@ -50,6 +55,28 @@ def get_custom_movies(request: Request):
         }
 
     return custom_data
+
+
+@app.get("/api/tmdb-cache", dependencies=[Security(verify_token)])
+def get_tmdb_cache(request: Request):
+    """Returns server-side cached TMDB metadata, excluding movies hidden from the client IP."""
+    cache = load_tmdb_cache()
+    hidden_ids = get_hidden_ids_for_request(request)
+
+    if hidden_ids:
+        cache = {
+            k: v for k, v in cache.items()
+            if str(k).strip() not in hidden_ids
+        }
+
+    return cache
+
+
+@app.post("/api/tmdb-cache", dependencies=[Security(verify_token)])
+def update_tmdb_cache(payload: TmdbCacheUpdate):
+    """Merges newly fetched TMDB metadata entries into tmdb_cache.json."""
+    saved_count = merge_tmdb_cache(payload.entries)
+    return {"status": "success", "saved_count": saved_count}
 
 
 # --- Movie CRUD Endpoints ---
@@ -131,6 +158,7 @@ def delete_movie(movie_id: str, request: Request):
 
     write_csv(filtered_data)
     remove_from_known_movies(target_id)
+    remove_from_tmdb_cache(target_id)
     return {"status": "success", "message": "Movie deleted"}
 
 

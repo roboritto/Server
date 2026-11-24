@@ -67,20 +67,22 @@ export function getCustomMovieMetadata(movieId) {
 }
 
 export async function fetchSingleTmdbMovie(movieId) {
-    // Bypass TMDB API and localStorage cache for custom movie IDs (>= 8000000)
-    if (Number(movieId) >= CUSTOM_MOVIE_ID_MIN) {
-        return getCustomMovieMetadata(movieId);
+    const idStr = String(movieId);
+
+    // Bypass TMDB API and server cache for custom movie IDs (>= 8000000)
+    if (Number(idStr) >= CUSTOM_MOVIE_ID_MIN) {
+        return getCustomMovieMetadata(idStr);
     }
 
-    if (state.tmdbCache[movieId]) {
-        return state.tmdbCache[movieId];
+    if (state.tmdbCache[idStr]) {
+        return state.tmdbCache[idStr];
     }
 
-    const url = `https://api.themoviedb.org/3/movie/${movieId}?api_key=${state.tmdbApiKey}&append_to_response=credits`;
+    const url = `https://api.themoviedb.org/3/movie/${idStr}?api_key=${state.tmdbApiKey}&append_to_response=credits`;
     const response = await fetch(url);
 
     if (!response.ok) {
-        console.warn(`TMDB fetch failed for movie_id ${movieId}: ${response.status}`);
+        console.warn(`TMDB fetch failed for movie_id ${idStr}: ${response.status}`);
         return null;
     }
 
@@ -126,7 +128,7 @@ export async function fetchSingleTmdbMovie(movieId) {
         cast: topCast
     };
 
-    state.tmdbCache[movieId] = simplifiedTmdb;
+    state.tmdbCache[idStr] = simplifiedTmdb;
     return simplifiedTmdb;
 }
 
@@ -209,6 +211,68 @@ export function updateTopLoadingBar(loadedCount, totalCount) {
     dom.topLoadingBar.style.width = `${percentage}%`;
 }
 
+export async function saveTmdbCacheEntries(entries) {
+    if (state.isDemoMode || !state.serverApiToken || !entries) return false;
+    if (Object.keys(entries).length === 0) return true;
+
+    try {
+        const response = await fetch('/api/tmdb-cache', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-api-token': state.serverApiToken
+            },
+            body: JSON.stringify({ entries })
+        });
+        return response.ok;
+    } catch (error) {
+        console.warn('Could not persist TMDB cache to server:', error);
+        return false;
+    }
+}
+
+async function migrateLegacyLocalStorageCache() {
+    const rawLegacy = localStorage.getItem(TMDB_CACHE_KEY);
+    if (!rawLegacy) return;
+
+    try {
+        const legacyCache = JSON.parse(rawLegacy);
+        if (!legacyCache || typeof legacyCache !== 'object') {
+            localStorage.removeItem(TMDB_CACHE_KEY);
+            return;
+        }
+
+        const missingOnServer = {};
+        Object.entries(legacyCache).forEach(([movieId, metadata]) => {
+            const idStr = String(movieId).trim();
+            if (
+                idStr &&
+                Number(idStr) < CUSTOM_MOVIE_ID_MIN &&
+                metadata &&
+                typeof metadata === 'object' &&
+                !state.tmdbCache[idStr]
+            ) {
+                state.tmdbCache[idStr] = metadata;
+                missingOnServer[idStr] = metadata;
+            }
+        });
+
+        const migrateCount = Object.keys(missingOnServer).length;
+        if (migrateCount === 0) {
+            localStorage.removeItem(TMDB_CACHE_KEY);
+            return;
+        }
+
+        const saved = await saveTmdbCacheEntries(missingOnServer);
+        if (saved) {
+            localStorage.removeItem(TMDB_CACHE_KEY);
+            console.log(`Migrated ${migrateCount} cached TMDB movies from localStorage to server.`);
+        }
+    } catch (error) {
+        console.warn('Skipping legacy localStorage TMDB cache migration:', error);
+    }
+}
+
 export async function startBackgroundDatabaseLoad() {
     if (state.isDatabaseLoading || state.isDatabaseLoaded || !state.serverApiToken) return;
     state.isDatabaseLoading = true;
@@ -219,15 +283,11 @@ export async function startBackgroundDatabaseLoad() {
     }
 
     try {
-        const [moviesRes, customRes] = await Promise.all([
-            fetch('/api/movies', {
-                method: 'GET',
-                headers: { 'x-api-token': state.serverApiToken }
-            }),
-            fetch('/api/custom-movies', {
-                method: 'GET',
-                headers: { 'x-api-token': state.serverApiToken }
-            })
+        const authHeaders = { 'x-api-token': state.serverApiToken };
+        const [moviesRes, customRes, cacheRes] = await Promise.all([
+            fetch('/api/movies', { method: 'GET', headers: authHeaders }),
+            fetch('/api/custom-movies', { method: 'GET', headers: authHeaders }),
+            fetch('/api/tmdb-cache', { method: 'GET', headers: authHeaders })
         ]);
 
         if (!moviesRes.ok) {
@@ -236,7 +296,11 @@ export async function startBackgroundDatabaseLoad() {
 
         state.rawCsvMovies = await moviesRes.json();
         state.customMoviesData = customRes.ok ? await customRes.json() : {};
+        state.tmdbCache = cacheRes.ok ? await cacheRes.json() : {};
         state.moviesDatabase = [];
+
+        // One-time migration from browser localStorage -> server tmdb_cache.json
+        await migrateLegacyLocalStorageCache();
 
         const totalMovies = state.rawCsvMovies.length;
         if (totalMovies === 0) {
@@ -259,11 +323,39 @@ export async function startBackgroundDatabaseLoad() {
             }
         }
 
+        const syncVisibleViews = () => {
+            rebuildPeopleIndex();
+
+            if (state.currentPage === 'person-page' && state.currentPersonId) {
+                openPersonPage(state.currentPersonId, false);
+            }
+            if (state.currentPage === 'rated-page') {
+                renderRatedMoviesPage();
+            }
+
+            updateTopLoadingBar(state.moviesDatabase.length, totalMovies);
+            renderHomeAllMovies();
+
+            if (state.currentPage === 'movie-page' && state.currentMovieId) {
+                const activeMovie = state.moviesDatabase.find(
+                    (m) => m.movie_id === String(state.currentMovieId)
+                );
+                if (activeMovie) renderMovieCollections(activeMovie);
+            }
+        };
+
         for (let i = 0; i < totalMovies; i += CHUNK_SIZE) {
             const chunk = loadQueue.slice(i, i + CHUNK_SIZE);
-            const needsNetworkCall = chunk.some(
-                (row) => Number(row.movie_id) < CUSTOM_MOVIE_ID_MIN && !state.tmdbCache[row.movie_id]
+            const missingIdsInChunk = new Set(
+                chunk
+                    .filter(
+                        (row) =>
+                            Number(row.movie_id) < CUSTOM_MOVIE_ID_MIN &&
+                            !state.tmdbCache[String(row.movie_id)]
+                    )
+                    .map((row) => String(row.movie_id))
             );
+            const needsNetworkCall = missingIdsInChunk.size > 0;
 
             const chunkResults = await Promise.all(
                 chunk.map(async (csvRow) => {
@@ -292,7 +384,6 @@ export async function startBackgroundDatabaseLoad() {
             );
 
             state.moviesDatabase.push(...chunkResults);
-            rebuildPeopleIndex();
 
             if (state.pendingInitialMovieId) {
                 const initialMovie = state.moviesDatabase.find(
@@ -305,36 +396,27 @@ export async function startBackgroundDatabaseLoad() {
                 }
             }
 
-            if (state.currentPage === 'person-page' && state.currentPersonId) {
-                openPersonPage(state.currentPersonId, false);
-            }
-
-            if (state.currentPage === 'rated-page') {
-                renderRatedMoviesPage();
-            }
-
-            updateTopLoadingBar(state.moviesDatabase.length, totalMovies);
-            renderHomeAllMovies();
-
-            if (state.currentPage === 'movie-page' && state.currentMovieId) {
-                const activeMovie = state.moviesDatabase.find(
-                    (m) => m.movie_id === String(state.currentMovieId)
-                );
-                if (activeMovie) renderMovieCollections(activeMovie);
-            }
-
             if (needsNetworkCall) {
-                try {
-                    localStorage.setItem(TMDB_CACHE_KEY, JSON.stringify(state.tmdbCache));
-                } catch (storageErr) {
-                    console.warn('localStorage quota reached for TMDB cache:', storageErr);
+                const newlyFetched = {};
+                missingIdsInChunk.forEach((idStr) => {
+                    if (state.tmdbCache[idStr]) {
+                        newlyFetched[idStr] = state.tmdbCache[idStr];
+                    }
+                });
+                if (Object.keys(newlyFetched).length > 0) {
+                    await saveTmdbCacheEntries(newlyFetched);
+                }
+
+                syncVisibleViews();
+
+                if (i + CHUNK_SIZE < totalMovies) {
+                    await sleep(CHUNK_DELAY_MS);
                 }
             }
-
-            if (needsNetworkCall && i + CHUNK_SIZE < totalMovies) {
-                await sleep(CHUNK_DELAY_MS);
-            }
         }
+
+        // Single final render pass (handles all cached chunks in one shot)
+        syncVisibleViews();
 
         state.isDatabaseLoaded = true;
         console.log(

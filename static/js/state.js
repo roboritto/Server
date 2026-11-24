@@ -1,4 +1,4 @@
-import { TOKEN_STORAGE_KEY, TMDB_CACHE_KEY } from './config.js';
+import { TOKEN_STORAGE_KEY } from './config.js';
 import { getMovieIdFromUrlPath } from './utils.js';
 
 export const state = {
@@ -18,7 +18,7 @@ export const state = {
     rawCsvMovies: [],       // Raw rows from /api/movies CSV
     moviesDatabase: [],     // Enriched movie objects (CSV + TMDB/custom metadata)
     peopleDatabase: [],     // Aggregated unique directors & actors with combined roles
-    tmdbCache: JSON.parse(localStorage.getItem(TMDB_CACHE_KEY) || '{}'),
+    tmdbCache: {},          // Loaded from server-side /api/tmdb-cache
     customMoviesData: {},   // Local metadata loaded from /api/custom-movies
     isDatabaseLoading: false,
     isDatabaseLoaded: false,

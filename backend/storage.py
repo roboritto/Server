@@ -1,6 +1,7 @@
 import csv
 import json
 import os
+import threading
 from datetime import datetime, timedelta
 from typing import List
 from fastapi import Request
@@ -13,7 +14,10 @@ from backend.config import (
     KNOWN_MOVIES_FILE,
     LOCAL_TZ,
     NEW_BADGE_DAYS,
+    TMDB_CACHE_FILE,
 )
+
+_tmdb_cache_lock = threading.Lock()
 
 
 def read_csv() -> List[dict]:
@@ -135,3 +139,65 @@ def remove_from_known_movies(movie_id: str):
                 json.dump(known_map, f, indent=2)
     except Exception as e:
         print(f"Warning: Could not update {KNOWN_MOVIES_FILE} on delete: {e}")
+
+
+def _write_json_atomic(filepath: str, data: dict):
+    """Writes JSON to a temp file first, then atomically swaps it into place."""
+    tmp_path = f"{filepath}.tmp"
+    with open(tmp_path, mode="w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False)
+    os.replace(tmp_path, filepath)
+
+
+def load_tmdb_cache() -> dict:
+    """Loads cached TMDB movie metadata from tmdb_cache.json."""
+    if not os.path.exists(TMDB_CACHE_FILE):
+        return {}
+    try:
+        with open(TMDB_CACHE_FILE, mode="r", encoding="utf-8") as f:
+            data = json.load(f)
+            return data if isinstance(data, dict) else {}
+    except Exception as e:
+        print(f"Warning: Could not read {TMDB_CACHE_FILE}: {e}")
+        return {}
+
+
+def merge_tmdb_cache(entries: dict) -> int:
+    """Thread-safely merges newly fetched TMDB movie entries into tmdb_cache.json."""
+    if not isinstance(entries, dict) or not entries:
+        return 0
+
+    with _tmdb_cache_lock:
+        cache = load_tmdb_cache()
+        saved_count = 0
+
+        for movie_id, metadata in entries.items():
+            key = str(movie_id).strip()
+            if key and isinstance(metadata, dict):
+                cache[key] = metadata
+                saved_count += 1
+
+        if saved_count > 0:
+            try:
+                _write_json_atomic(TMDB_CACHE_FILE, cache)
+            except Exception as e:
+                print(f"Warning: Could not save {TMDB_CACHE_FILE}: {e}")
+                raise
+
+        return saved_count
+
+
+def remove_from_tmdb_cache(movie_id: str):
+    """Removes a deleted movie_id from tmdb_cache.json if present."""
+    key = str(movie_id).strip()
+    if not key or not os.path.exists(TMDB_CACHE_FILE):
+        return
+
+    with _tmdb_cache_lock:
+        cache = load_tmdb_cache()
+        if key in cache:
+            del cache[key]
+            try:
+                _write_json_atomic(TMDB_CACHE_FILE, cache)
+            except Exception as e:
+                print(f"Warning: Could not update {TMDB_CACHE_FILE} on delete: {e}")

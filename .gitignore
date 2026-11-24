@@ -9,3 +9,5 @@ script.js
 style.css
 settings.json
 known_movies.json
+tmdb_cache.json
+tmdb_cache.json.tmp
