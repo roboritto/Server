@@ -225,13 +225,22 @@
                         <div id="movie-backdrop-gradient"></div>
                     </div>
 
-                    <!-- Top-Right Remove Movie Button (Anchored to page top, non-floating) -->
-                    <button id="delete-movie-btn" type="button" title="Remove Movie from Database">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round">
-                            <line x1="18" y1="6" x2="6" y2="18"></line>
-                            <line x1="6" y1="6" x2="18" y2="18"></line>
-                        </svg>
-                    </button>
+                    <div id="movie-top-actions">
+                        <button id="hide-movie-btn" class="hidden" type="button" title="Hide movie from public" aria-label="Hide movie from public">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                <circle cx="12" cy="12" r="3"></circle>
+                            </svg>
+                        </button>
+
+                        <!-- Top-Right Remove Movie Button (Anchored to page top, non-floating) -->
+                        <button id="delete-movie-btn" type="button" title="Remove Movie from Database">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="18" y1="6" x2="6" y2="18"></line>
+                                <line x1="6" y1="6" x2="18" y2="18"></line>
+                            </svg>
+                        </button>
+                    </div>
 
                     <div id="movie-hero-content">
                         <!-- Release Year styled like 'FILM' above the title -->
@@ -344,7 +353,7 @@
                             <circle cx="11" cy="11" r="8"></circle>
                             <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
                         </svg>
-                        <input type="text" id="tmdb-search-input" placeholder="Search TMDB to add a movie..." autocomplete="off">
+                        <input type="text" id="tmdb-search-input" placeholder="Search TMDB or enter custom ID (8000000+)..." autocomplete="off">
                     </div>
                 </form>
                 <div id="tmdb-search-results" class="search-results-container"></div>
@@ -428,7 +437,7 @@
                 <button id="close-add-link-modal-btn" class="modal-close-btn">×</button>
                 <h2 class="modal-title">Add Download Link</h2>
                 <form id="add-link-form">
-                    <input type="text" id="add-link-input" placeholder="Paste movie link..." required autocomplete="off">
+                    <input type="text" id="add-link-input" placeholder="Paste URL or relative path (e.g. movies/film.mp4)..." required autocomplete="off">
                     <button type="submit" id="save-add-link-btn">Add Link</button>
                 </form>
             </div>

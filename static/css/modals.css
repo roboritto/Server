@@ -153,6 +153,75 @@
     cursor: not-allowed;
 }
 
+/* --- Custom Movie Inline Form inside Add Movie Modal --- */
+.custom-movie-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+    padding: 0.5rem 0.25rem;
+}
+
+.custom-movie-form-header {
+    font-size: 0.85rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--accent-sky);
+    margin-bottom: 0.15rem;
+}
+
+.custom-movie-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.6rem;
+}
+
+.custom-movie-input,
+.custom-movie-textarea {
+    width: 100%;
+    padding: 0.65rem 0.85rem;
+    border-radius: 0.5rem;
+    border: 1px solid var(--border-color);
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.custom-movie-textarea {
+    resize: vertical;
+    line-height: 1.45;
+}
+
+.custom-movie-input:focus,
+.custom-movie-textarea:focus {
+    border-color: var(--accent-blue);
+}
+
+.custom-movie-submit-btn {
+    width: 100%;
+    padding: 0.75rem 1.25rem;
+    border: none;
+    border-radius: 0.5rem;
+    background-color: var(--accent-blue);
+    color: var(--text-white);
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 0.15rem;
+    transition: background-color 0.2s;
+}
+
+.custom-movie-submit-btn:hover:not(:disabled) {
+    background-color: var(--accent-blue-hover);
+}
+
+.custom-movie-submit-btn:disabled {
+    background-color: var(--btn-disabled);
+    cursor: not-allowed;
+}
+
 /* --- Popup 3: Rating & Review Modal --- */
 .rating-modal-box {
     flex-direction: column;

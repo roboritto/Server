@@ -1,0 +1,10 @@
+{
+  "public_permissions": {
+    "delete": false,
+    "add_movie": true,
+    "add_link": false,
+    "edit_rating": true,
+    "edit_collection": false,
+    "download_collection": true
+  }
+}

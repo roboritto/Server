@@ -1,4 +1,4 @@
-import { MAX_SEARCH_RESULTS } from './config.js';
+import { MAX_SEARCH_RESULTS, CUSTOM_MOVIE_ID_MIN } from './config.js';
 import { state } from './state.js';
 import { dom } from './dom.js';
 import {
@@ -9,6 +9,7 @@ import {
 } from './utils.js';
 import {
     isMovieInDatabase,
+    getCustomMovieMetadata,
     fetchSingleTmdbMovie,
     rebuildPeopleIndex,
     saveTmdbCacheEntries
@@ -34,6 +35,12 @@ export async function performTmdbSearch(query) {
 
     if (!cleanQuery || !dom.tmdbSearchResults) {
         if (dom.tmdbSearchResults) dom.tmdbSearchResults.innerHTML = '';
+        return;
+    }
+
+    // Intercept custom movie IDs (>= 8000000) instead of querying TMDB
+    if (/^\d+$/.test(cleanQuery) && Number(cleanQuery) >= CUSTOM_MOVIE_ID_MIN) {
+        renderCustomMovieLookup(cleanQuery);
         return;
     }
 
@@ -191,6 +198,290 @@ async function handleAddMovieFromTmdb(movieId, buttonEl) {
             buttonEl.textContent = 'Add';
         }
     }
+}
+
+function renderCustomMovieLookup(movieId) {
+    if (!dom.tmdbSearchResults) return;
+    dom.tmdbSearchResults.innerHTML = '';
+
+    const idStr = String(movieId);
+    const alreadyInDb = isMovieInDatabase(idStr);
+    const existingMeta = getCustomMovieMetadata(idStr);
+
+    // Case 1 & 2: Already in database OR already defined in custom_movies.json
+    if (alreadyInDb || existingMeta) {
+        const dbMovie = state.moviesDatabase.find((m) => String(m.movie_id) === idStr);
+        const title = dbMovie?.title || existingMeta?.title || `Movie #${idStr}`;
+        const releaseYear = dbMovie?.release_year || existingMeta?.release_year || `Custom #${idStr}`;
+        const posterUrl = dbMovie?.poster_path || existingMeta?.poster_path || '';
+
+        const row = document.createElement('div');
+        row.className = 'search-result-item';
+        if (alreadyInDb) row.style.cursor = 'default';
+
+        const posterHtml = posterUrl
+            ? `<img src="${posterUrl}" alt="${title}" class="search-result-poster">`
+            : `<div class="search-result-poster search-result-placeholder">Custom</div>`;
+
+        row.innerHTML = `
+            ${posterHtml}
+            <div class="search-result-info">
+                <div class="search-result-title">${title}</div>
+                <div class="search-result-sub">${releaseYear} • ID ${idStr}</div>
+            </div>
+            <button type="button" class="tmdb-add-action-btn" ${alreadyInDb ? 'disabled' : ''}>
+                ${alreadyInDb ? 'Added' : 'Add'}
+            </button>
+        `;
+
+        if (!alreadyInDb) {
+            const addBtn = row.querySelector('.tmdb-add-action-btn');
+            row.addEventListener('click', (event) => {
+                event.stopPropagation();
+                handleAddExistingCustomMovie(idStr, addBtn);
+            });
+        }
+
+        dom.tmdbSearchResults.appendChild(row);
+        return;
+    }
+
+    // Case 3: New custom movie ID -> render inline creation form
+    const form = document.createElement('form');
+    form.className = 'custom-movie-form';
+    form.innerHTML = `
+        <div class="custom-movie-form-header">New Custom Movie #${idStr}</div>
+
+        <input type="text" name="title" class="custom-movie-input" placeholder="Title *" required autocomplete="off">
+
+        <div class="custom-movie-row">
+            <input type="text" name="release_date" class="custom-movie-input" placeholder="Release Date (YYYY-MM-DD or YYYY)" autocomplete="off">
+            <input type="text" name="genres" class="custom-movie-input" placeholder="Genres (Action, Drama)" autocomplete="off">
+        </div>
+
+        <input type="text" name="directors" class="custom-movie-input" placeholder="Director(s) (comma-separated)" autocomplete="off">
+        <input type="text" name="cast" class="custom-movie-input" placeholder="Cast (Actor or Actor (Character), comma-separated)" autocomplete="off">
+
+        <div class="custom-movie-row">
+            <input type="text" name="poster_path" class="custom-movie-input" placeholder="Poster URL or /custom_images/..." autocomplete="off">
+            <input type="text" name="backdrop_path" class="custom-movie-input" placeholder="Backdrop URL or /custom_images/..." autocomplete="off">
+        </div>
+
+        <input type="text" name="link" class="custom-movie-input" placeholder="Download Link (optional)" autocomplete="off">
+        <textarea name="overview" class="custom-movie-textarea" rows="3" placeholder="Synopsis / overview (optional)"></textarea>
+
+        <button type="submit" class="custom-movie-submit-btn">Add Custom Movie</button>
+    `;
+
+    form.addEventListener('submit', (event) => {
+        handleCreateCustomMovie(event, idStr, form);
+    });
+
+    dom.tmdbSearchResults.appendChild(form);
+}
+
+async function handleAddExistingCustomMovie(movieId, buttonEl) {
+    const idStr = String(movieId);
+    if (isMovieInDatabase(idStr)) return;
+
+    if (buttonEl) {
+        buttonEl.disabled = true;
+        buttonEl.textContent = 'Adding...';
+    }
+
+    try {
+        const response = await fetch('/api/movies', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-api-token': state.serverApiToken
+            },
+            body: JSON.stringify({
+                movie_id: idStr,
+                link: '',
+                rating: 0.0,
+                last_watch: '',
+                review: '',
+                collection: ''
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to add custom movie to CSV');
+        }
+
+        const customInfo = getCustomMovieMetadata(idStr);
+        finalizeAddedCustomMovie(idStr, '', customInfo);
+    } catch (error) {
+        console.error('Error adding existing custom movie:', error);
+        alert('Could not add custom movie. Please try again.');
+        if (buttonEl) {
+            buttonEl.disabled = false;
+            buttonEl.textContent = 'Add';
+        }
+    }
+}
+
+async function handleCreateCustomMovie(event, movieId, formEl) {
+    event.preventDefault();
+    const idStr = String(movieId);
+    if (isMovieInDatabase(idStr)) return;
+
+    const formData = new FormData(formEl);
+    const title = String(formData.get('title') || '').trim();
+    if (!title) return;
+
+    const releaseDate = String(formData.get('release_date') || '').trim();
+    const releaseYear = releaseDate ? releaseDate.slice(0, 4) : '';
+    const genres = String(formData.get('genres') || '')
+        .split(',')
+        .map((g) => g.trim())
+        .filter(Boolean);
+
+    const directors = String(formData.get('directors') || '')
+        .split(',')
+        .map((d) => d.trim())
+        .filter(Boolean)
+        .map((name) => ({ id: null, name, profile_path: '' }));
+
+    const cast = String(formData.get('cast') || '')
+        .split(',')
+        .map((entry) => entry.trim())
+        .filter(Boolean)
+        .map((entry) => {
+            const match = entry.match(/^(.+?)\s*\((.+)\)$/);
+            if (match) {
+                return {
+                    id: null,
+                    name: match[1].trim(),
+                    character: match[2].trim(),
+                    profile_path: ''
+                };
+            }
+            return { id: null, name: entry, character: '', profile_path: '' };
+        });
+
+    const posterPath = String(formData.get('poster_path') || '').trim();
+    const backdropPath = String(formData.get('backdrop_path') || '').trim();
+    const overview = String(formData.get('overview') || '').trim();
+    const link = String(formData.get('link') || '').trim();
+
+    const metadata = {
+        title,
+        original_title: title,
+        release_date: releaseDate,
+        release_year: releaseYear,
+        runtime: 0,
+        genres,
+        overview,
+        poster_path: posterPath,
+        backdrop_path: backdropPath,
+        tmdb_rating: 0,
+        directors,
+        cast
+    };
+
+    const submitBtn = formEl.querySelector('.custom-movie-submit-btn');
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Saving...';
+    }
+
+    try {
+        // 1. Save metadata to custom_movies.json
+        const metaRes = await fetch('/api/custom-movies', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-api-token': state.serverApiToken
+            },
+            body: JSON.stringify({
+                movie_id: idStr,
+                ...metadata
+            })
+        });
+
+        if (!metaRes.ok) {
+            throw new Error('Failed to save custom movie metadata');
+        }
+
+        // 2. Append movie row to CSV
+        const csvRes = await fetch('/api/movies', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-api-token': state.serverApiToken
+            },
+            body: JSON.stringify({
+                movie_id: idStr,
+                link,
+                rating: 0.0,
+                last_watch: '',
+                review: '',
+                collection: ''
+            })
+        });
+
+        if (!csvRes.ok) {
+            throw new Error('Failed to add custom movie to CSV');
+        }
+
+        state.customMoviesData[idStr] = metadata;
+        finalizeAddedCustomMovie(idStr, link, getCustomMovieMetadata(idStr));
+    } catch (error) {
+        console.error('Error creating custom movie:', error);
+        alert('Could not create custom movie. Please try again.');
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Add Custom Movie';
+        }
+    }
+}
+
+function finalizeAddedCustomMovie(idStr, link, customInfo) {
+    state.rawCsvMovies.push({
+        movie_id: idStr,
+        link,
+        collection: '',
+        rating: '',
+        last_watch: '',
+        review: '',
+        is_new: true
+    });
+
+    state.moviesDatabase.push({
+        ...(customInfo || {
+            title: `Movie #${idStr}`,
+            release_date: '',
+            release_year: '',
+            genres: [],
+            directors: [],
+            cast: [],
+            overview: '',
+            poster_path: '',
+            backdrop_path: ''
+        }),
+        movie_id: idStr,
+        link,
+        collection: '',
+        rating: 0,
+        last_watch: '',
+        review: '',
+        is_new: true
+    });
+
+    rebuildPeopleIndex();
+    renderHomeAllMovies();
+
+    if (dom.tmdbSearchInput) {
+        dom.tmdbSearchInput.value = '';
+        dom.tmdbSearchInput.blur();
+    }
+    if (dom.tmdbSearchResults) {
+        dom.tmdbSearchResults.innerHTML = '';
+    }
+    closeModal(dom.tmdbAddModal);
+    openMoviePage(idStr);
 }
 
 // =========================================================================
@@ -441,15 +732,30 @@ export async function handleAddMovieLink(event) {
     event.preventDefault();
     if (!state.currentMovieId || !dom.addLinkInput) return;
 
-    const newLink = dom.addLinkInput.value.trim();
+    let newLink = dom.addLinkInput.value.trim();
     if (!newLink) return;
+
+    if (!/^https?:\/\//i.test(newLink)) {
+        newLink = newLink
+            .replace(/^["']|["']$/g, '')
+            .replace(/\\/g, '/')
+            .replace(/^(\.\/)+/, '')
+            .replace(/^\/+/, '');
+    }
+
+    if (!newLink) return;
+
+    if (newLink.includes(',')) {
+        alert('Links and local file paths cannot contain commas.');
+        return;
+    }
 
     const movie = state.moviesDatabase.find((m) => String(m.movie_id) === String(state.currentMovieId));
     if (!movie) return;
 
     const existingLinks = parseLinkArray(movie.link);
-    if (existingLinks.includes(newLink)) {
-        alert('This link is already saved for this movie.');
+    if (existingLinks.some((l) => l.toLowerCase() === newLink.toLowerCase())) {
+        alert('This link or file path is already saved for this movie.');
         return;
     }
 

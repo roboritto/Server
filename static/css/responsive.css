@@ -50,7 +50,7 @@
         padding-top: var(--mobile-nav-height) !important; /* Clears top mobile nav bar */
     }
 
-    #delete-movie-btn {
+    #movie-top-actions {
         top: 1rem;
         right: 1.25rem;
     }
@@ -102,5 +102,9 @@
     #open-download-modal-btn svg {
         width: 20px;
         height: 20px;
+    }
+
+    .custom-movie-row {
+        grid-template-columns: 1fr;
     }
 }

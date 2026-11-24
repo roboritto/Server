@@ -17,7 +17,7 @@ import {
     clearAllCatalogFilters
 } from './home.js';
 import { updateRatedFilterHeartsUI, renderRatedMoviesPage } from './rated.js';
-import { openRandomMoviePage } from './movie.js';
+import { openRandomMoviePage, handleToggleHideMovie } from './movie.js';
 import {
     performTmdbSearch,
     updateModalHeartsUI,
@@ -92,6 +92,7 @@ dom.openDownloadModalBtn?.addEventListener('click', () => openModal(dom.download
 dom.openRatingModalBtn?.addEventListener('click', openRatingModalForCurrentMovie);
 dom.openCollectionModalBtn?.addEventListener('click', openCollectionModalForCurrentMovie);
 dom.openAddLinkModalBtn?.addEventListener('click', openAddLinkModalForCurrentMovie);
+dom.hideMovieBtn?.addEventListener('click', handleToggleHideMovie);
 dom.deleteMovieBtn?.addEventListener('click', openDeleteMovieModal);
 
 dom.interactiveHearts.forEach((heartEl) => {

@@ -2,14 +2,16 @@ import os
 import re
 import secrets
 import time
+from pathlib import Path
 from typing import List, Optional
 from urllib.parse import quote, unquote, urlparse
 import httpx
 from zipstream import ZIP_STORED, ZipStream
 
-from backend.config import DOWNLOAD_TICKET_TTL, PREFERRED_DOWNLOAD_HOST
+from backend.config import DOWNLOAD_TICKET_TTL, LOCAL_MOVIES_DIR, PREFERRED_DOWNLOAD_HOST
 
 COLLECTION_DOWNLOAD_TICKETS = {}
+LOCAL_FILE_DOWNLOAD_TICKETS = {}
 VALID_VIDEO_EXTS = {".mp4", ".mkv", ".avi", ".mov", ".webm", ".m4v", ".ts", ".wmv", ".flv"}
 REMOTE_HTTP_HEADERS = {
     "User-Agent": (
@@ -34,18 +36,57 @@ def movie_in_collection(raw_collection: str, target_collection: str) -> bool:
     return target_lower in cols
 
 
+def is_http_url(entry: str) -> bool:
+    return entry.lower().startswith(("http://", "https://"))
+
+
+def normalize_local_path(raw_path: str) -> str:
+    """Normalizes slashes and trims accidental quotes/prefixes from local paths."""
+    cleaned = (raw_path or "").strip().strip('"').strip("'").replace("\\", "/")
+    while cleaned.startswith("./"):
+        cleaned = cleaned[2:]
+    return cleaned.lstrip("/")
+
+
+def resolve_local_file(raw_path: str) -> Optional[Path]:
+    """
+    Safely resolves a relative video path inside LOCAL_MOVIES_DIR (or project root).
+    Returns None if the path escapes the base directory or does not point to a file.
+    """
+    if not raw_path or is_http_url(raw_path):
+        return None
+
+    rel = normalize_local_path(raw_path)
+    if not rel or Path(rel).is_absolute():
+        return None
+
+    base_dir = Path(LOCAL_MOVIES_DIR or ".").resolve()
+    try:
+        candidate = (base_dir / rel).resolve()
+    except (OSError, ValueError):
+        return None
+
+    if not candidate.is_relative_to(base_dir) or not candidate.is_file():
+        return None
+
+    return candidate
+
+
 def extract_movie_links(raw_link: str) -> List[str]:
-    """Splits comma-separated movie URLs while removing duplicates."""
+    """Splits comma-separated movie links (both HTTP URLs and relative local paths)."""
     if not raw_link:
         return []
     seen = set()
-    urls = []
+    entries = []
     for part in str(raw_link).split(","):
         clean = part.strip()
-        if clean.startswith(("http://", "https://")) and clean not in seen:
-            seen.add(clean)
-            urls.append(clean)
-    return urls
+        if not clean:
+            continue
+        key = clean if is_http_url(clean) else normalize_local_path(clean).lower()
+        if key and key not in seen:
+            seen.add(key)
+            entries.append(clean if is_http_url(clean) else normalize_local_path(clean))
+    return entries
 
 
 def prioritize_links(urls: List[str]) -> List[str]:
@@ -133,9 +174,31 @@ def probe_downloadable_link(client: httpx.Client, urls: List[str]) -> Optional[d
 
 def cleanup_expired_tickets():
     now = time.time()
-    expired = [k for k, v in COLLECTION_DOWNLOAD_TICKETS.items() if v["expires_at"] < now]
-    for k in expired:
-        COLLECTION_DOWNLOAD_TICKETS.pop(k, None)
+    for store in (COLLECTION_DOWNLOAD_TICKETS, LOCAL_FILE_DOWNLOAD_TICKETS):
+        expired = [k for k, v in store.items() if v["expires_at"] < now]
+        for k in expired:
+            store.pop(k, None)
+
+
+def create_local_file_ticket(file_path: Path, client_ip: str) -> dict:
+    """Issues a single-use download ticket for a validated local video file."""
+    cleanup_expired_tickets()
+    ticket = secrets.token_urlsafe(32)
+    LOCAL_FILE_DOWNLOAD_TICKETS[ticket] = {
+        "expires_at": time.time() + DOWNLOAD_TICKET_TTL,
+        "client_ip": client_ip,
+        "path": str(file_path),
+        "filename": file_path.name,
+    }
+    return {"ticket": ticket, "filename": file_path.name}
+
+
+def consume_local_file_ticket(ticket: str, client_ip: str) -> Optional[dict]:
+    cleanup_expired_tickets()
+    ticket_data = LOCAL_FILE_DOWNLOAD_TICKETS.get(ticket)
+    if not ticket_data or ticket_data["client_ip"] != client_ip:
+        return None
+    return LOCAL_FILE_DOWNLOAD_TICKETS.pop(ticket, None)
 
 
 def stream_remote_file(url: str):
@@ -174,19 +237,44 @@ def create_download_ticket(
         for row in collection_rows:
             m_id = str(row.get("movie_id", "")).strip()
             display_title = titles.get(m_id) or f"Movie_{m_id}"
-            urls = extract_movie_links(row.get("link", ""))
+            entries = extract_movie_links(row.get("link", ""))
 
-            if not urls:
+            if not entries:
                 skipped_items.append({"title": display_title, "movie_id": m_id, "links": []})
                 continue
 
-            resolved = probe_downloadable_link(probe_client, urls)
-            if not resolved:
-                skipped_items.append({"title": display_title, "movie_id": m_id, "links": urls})
-                continue
+            local_candidates = [e for e in entries if not is_http_url(e)]
+            http_candidates = [e for e in entries if is_http_url(e)]
+
+            # 1. Prefer an existing local file first (fastest & zero external bandwidth)
+            resolved_local = None
+            for rel_path in local_candidates:
+                candidate = resolve_local_file(rel_path)
+                if candidate:
+                    resolved_local = candidate
+                    break
+
+            if resolved_local:
+                ext = resolved_local.suffix.lower() or ".mp4"
+                item_payload = {
+                    "type": "local",
+                    "path": str(resolved_local),
+                    "size": resolved_local.stat().st_size,
+                }
+            else:
+                # 2. Fall back to remote HTTP(S) links
+                resolved_remote = probe_downloadable_link(probe_client, http_candidates)
+                if not resolved_remote:
+                    skipped_items.append({"title": display_title, "movie_id": m_id, "links": entries})
+                    continue
+                ext = resolved_remote["ext"]
+                item_payload = {
+                    "type": "remote",
+                    "url": resolved_remote["url"],
+                    "size": resolved_remote["size"],
+                }
 
             base_name = sanitize_filename(display_title, fallback=f"Movie_{m_id}")
-            ext = resolved["ext"]
             filename = f"{base_name}{ext}"
             counter = 2
             while filename.lower() in used_filenames:
@@ -194,11 +282,7 @@ def create_download_ticket(
                 counter += 1
             used_filenames.add(filename.lower())
 
-            resolved_items.append({
-                "url": resolved["url"],
-                "filename": filename,
-                "size": resolved["size"],
-            })
+            resolved_items.append({"filename": filename, **item_payload})
 
     if not resolved_items:
         return None
@@ -234,7 +318,9 @@ def build_collection_zip_stream(ticket_data: dict) -> tuple[ZipStream, str]:
 
     for item in ticket_data["items"]:
         arcname = f"{folder_name}/{item['filename']}"
-        if item["size"] is not None:
+        if item.get("type") == "local":
+            zs.add_path(item["path"], arcname=arcname)
+        elif item["size"] is not None:
             zs.add(stream_remote_file(item["url"]), arcname=arcname, size=item["size"])
         else:
             zs.add(stream_remote_file(item["url"]), arcname=arcname)

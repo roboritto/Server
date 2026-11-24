@@ -4,8 +4,17 @@ import { getMovieIdFromUrlPath } from './utils.js';
 export const state = {
     // Auth & Keys
     isDemoMode: false,
+    isAdmin: false,
     serverApiToken: localStorage.getItem(TOKEN_STORAGE_KEY) || '',
     tmdbApiKey: '',
+    permissions: {
+        delete: true,
+        add_movie: true,
+        add_link: true,
+        edit_rating: true,
+        edit_collection: true,
+        download_collection: true
+    },
 
     // Routing & History
     currentPage: 'home-page',

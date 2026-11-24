@@ -71,6 +71,7 @@ export const dom = {
     openRatingModalBtn: document.getElementById('open-rating-modal-btn'),
     openCollectionModalBtn: document.getElementById('open-collection-modal-btn'),
     openAddLinkModalBtn: document.getElementById('open-add-link-modal-btn'),
+    hideMovieBtn: document.getElementById('hide-movie-btn'),
     deleteMovieBtn: document.getElementById('delete-movie-btn'),
     movieCastList: document.getElementById('movie-cast-list'),
     movieCollectionsContainer: document.getElementById('movie-collections-container'),

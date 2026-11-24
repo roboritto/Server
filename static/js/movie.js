@@ -117,7 +117,7 @@ export function renderMovieCollections(movie) {
         headerRowEl.appendChild(headingEl);
 
         const hasAnyLink = matchingMovies.some((m) => (m.link || '').trim().length > 0);
-        if (hasAnyLink) {
+        if (hasAnyLink && state.permissions.download_collection) {
             const downloadAllBtn = document.createElement('button');
             downloadAllBtn.type = 'button';
             downloadAllBtn.className = 'collection-download-btn';
@@ -172,16 +172,68 @@ export function renderMovieCollections(movie) {
     });
 }
 
+function isHttpLink(entry) {
+    return /^https?:\/\//i.test((entry || '').trim());
+}
+
+async function handleDownloadLocalFile(movieId, filePath, btnEl) {
+    if (state.isDemoMode) {
+        alert('Local file downloads require the self-hosted Python backend.');
+        return;
+    }
+
+    const labelEl = btnEl?.querySelector('span');
+    const originalLabel = labelEl ? labelEl.textContent : '';
+
+    if (btnEl) btnEl.disabled = true;
+    if (labelEl) labelEl.textContent = 'Preparing...';
+
+    try {
+        const response = await fetch('/api/local-files/download-ticket', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-api-token': state.serverApiToken
+            },
+            body: JSON.stringify({
+                movie_id: String(movieId),
+                path: filePath
+            })
+        });
+
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(data.detail || 'Could not download local file.');
+        }
+
+        const downloadUrl = `/api/local-files/download?ticket=${encodeURIComponent(data.ticket)}`;
+        const tempLink = document.createElement('a');
+        tempLink.href = downloadUrl;
+        tempLink.style.display = 'none';
+        document.body.appendChild(tempLink);
+        tempLink.click();
+        tempLink.remove();
+    } catch (error) {
+        console.error('Local file download error:', error);
+        alert(error.message || 'Failed to download local file.');
+    } finally {
+        if (btnEl) btnEl.disabled = false;
+        if (labelEl) labelEl.textContent = originalLabel;
+    }
+}
+
 export function openMoviePage(movieId, recordHistory = true) {
     const movie = state.moviesDatabase.find((m) => String(m.movie_id) === String(movieId));
     if (!movie || !dom.moviePage) return;
+
+    updateHideMovieButtonState(Boolean(movie.is_hidden));
 
     if (recordHistory && (state.currentPage !== 'movie-page' || String(state.currentMovieId) !== String(movieId))) {
         pushCurrentStateToHistory();
     }
 
     state.currentMovieId = String(movie.movie_id);
-
+    
     // 1. Standardized Backdrop Image
     const backdropUrl = movie.backdrop_path || movie.poster_path || '';
     if (dom.movieBackdropImage) {
@@ -247,22 +299,43 @@ export function openMoviePage(movieId, recordHistory = true) {
 
         if (links.length > 0) {
             dom.openDownloadModalBtn.classList.remove('hidden');
-            links.forEach((url, idx) => {
-                const btnLabel = links.length > 1 ? `Download ${idx + 1}` : 'Download';
-                const linkBtn = document.createElement('a');
-                linkBtn.href = url;
-                linkBtn.target = '_blank';
-                linkBtn.rel = 'noopener noreferrer';
-                linkBtn.className = 'download-link-btn';
-                linkBtn.innerHTML = `
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                        <polyline points="7 10 12 15 17 10"></polyline>
-                        <line x1="12" y1="15" x2="12" y2="3"></line>
-                    </svg>
-                    <span>${btnLabel}</span>
-                `;
-                dom.downloadModalLinks.appendChild(linkBtn);
+            links.forEach((entry, idx) => {
+                const isUrl = isHttpLink(entry);
+                const baseLabel = links.length > 1 ? `Download ${idx + 1}` : 'Download';
+
+                if (isUrl) {
+                    const linkBtn = document.createElement('a');
+                    linkBtn.href = entry;
+                    linkBtn.target = '_blank';
+                    linkBtn.rel = 'noopener noreferrer';
+                    linkBtn.className = 'download-link-btn';
+                    linkBtn.innerHTML = `
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                            <polyline points="7 10 12 15 17 10"></polyline>
+                            <line x1="12" y1="15" x2="12" y2="3"></line>
+                        </svg>
+                        <span>${baseLabel}</span>
+                    `;
+                    dom.downloadModalLinks.appendChild(linkBtn);
+                } else {
+                    const localBtn = document.createElement('button');
+                    localBtn.type = 'button';
+                    localBtn.className = 'download-link-btn';
+                    localBtn.title = entry; // Still shows the filename on hover
+                    localBtn.innerHTML = `
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                            <polyline points="7 10 12 15 17 10"></polyline>
+                            <line x1="12" y1="15" x2="12" y2="3"></line>
+                        </svg>
+                        <span>${baseLabel}</span>
+                    `;
+                    localBtn.addEventListener('click', () => {
+                        handleDownloadLocalFile(movie.movie_id, entry, localBtn);
+                    });
+                    dom.downloadModalLinks.appendChild(localBtn);
+                }
             });
         } else {
             dom.openDownloadModalBtn.classList.add('hidden');
@@ -314,4 +387,62 @@ export function openRandomMoviePage() {
 
     const randomIndex = Math.floor(Math.random() * pool.length);
     openMoviePage(pool[randomIndex].movie_id);
+}
+
+const EYE_VISIBLE_SVG = `
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+        <circle cx="12" cy="12" r="3"></circle>
+    </svg>
+`;
+
+const EYE_HIDDEN_SVG = `
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+        <line x1="1" y1="1" x2="23" y2="23"></line>
+    </svg>
+`;
+
+function updateHideMovieButtonState(isHidden) {
+    if (!dom.hideMovieBtn) return;
+    dom.hideMovieBtn.classList.toggle('is-hidden-movie', Boolean(isHidden));
+    dom.hideMovieBtn.innerHTML = isHidden ? EYE_HIDDEN_SVG : EYE_VISIBLE_SVG;
+    const label = isHidden
+        ? 'Hidden from public (click to unhide)'
+        : 'Hide movie from public';
+    dom.hideMovieBtn.title = label;
+    dom.hideMovieBtn.setAttribute('aria-label', label);
+}
+
+export async function handleToggleHideMovie() {
+    if (!state.isAdmin || state.isDemoMode || !state.currentMovieId) return;
+
+    const targetId = String(state.currentMovieId);
+    if (dom.hideMovieBtn) dom.hideMovieBtn.disabled = true;
+
+    try {
+        const response = await fetch(`/api/movies/${targetId}/toggle-hide`, {
+            method: 'POST',
+            headers: { 'x-api-token': state.serverApiToken }
+        });
+
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(data.detail || 'Could not update movie visibility');
+        }
+
+        const isNowHidden = Boolean(data.is_hidden);
+        const movie = state.moviesDatabase.find((m) => String(m.movie_id) === targetId);
+        if (movie) movie.is_hidden = isNowHidden;
+
+        const rawRow = state.rawCsvMovies.find((r) => String(r.movie_id) === targetId);
+        if (rawRow) rawRow.is_hidden = isNowHidden;
+
+        updateHideMovieButtonState(isNowHidden);
+    } catch (error) {
+        console.error('Error toggling movie visibility:', error);
+        alert(error.message || 'Failed to update movie visibility.');
+    } finally {
+        if (dom.hideMovieBtn) dom.hideMovieBtn.disabled = false;
+    }
 }

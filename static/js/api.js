@@ -368,6 +368,7 @@ export async function startBackgroundDatabaseLoad() {
                         last_watch: csvRow.last_watch || '',
                         review: csvRow.review || '',
                         is_new: Boolean(csvRow.is_new),
+                        is_hidden: Boolean(csvRow.is_hidden),
                         ...(tmdbInfo || {
                             title: `Movie #${csvRow.movie_id}`,
                             release_date: '',
@@ -433,6 +434,16 @@ export async function startBackgroundDatabaseLoad() {
     }
 }
 
+export function applyPermissionsToUi() {
+    const perms = state.permissions;
+    dom.hideMovieBtn?.classList.toggle('hidden', !state.isAdmin);
+    dom.navAddBtn?.classList.toggle('hidden', !perms.add_movie);
+    dom.deleteMovieBtn?.classList.toggle('hidden', !perms.delete);
+    dom.openAddLinkModalBtn?.classList.toggle('hidden', !perms.add_link);
+    dom.openRatingModalBtn?.classList.toggle('hidden', !perms.edit_rating);
+    dom.openCollectionModalBtn?.classList.toggle('hidden', !perms.edit_collection);
+}
+
 export async function verifyAndLoadConfig(token) {
     dom.authError?.classList.add('hidden');
     if (dom.authSubmitBtn) {
@@ -452,10 +463,16 @@ export async function verifyAndLoadConfig(token) {
 
         const data = await response.json();
         state.tmdbApiKey = data.tmdb_api_key;
+        state.isAdmin = Boolean(data.is_admin);
+        state.permissions = {
+            ...state.permissions,
+            ...(data.permissions || {})
+        };
         state.serverApiToken = token;
 
         localStorage.setItem(TOKEN_STORAGE_KEY, token);
 
+        applyPermissionsToUi();
         dom.authScreen?.classList.add('hidden');
         dom.appContainer?.classList.remove('hidden');
         updateMobileNavVisibility();
