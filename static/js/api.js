@@ -13,6 +13,7 @@ import { renderHomeRandomMovies, renderHomeAllMovies } from './home.js';
 import { renderRatedMoviesPage } from './rated.js';
 import { openMoviePage, renderMovieCollections } from './movie.js';
 import { openPersonPage } from './person.js';
+import { playWelcomeCurtain } from './welcome.js';
 
 export function isMovieInDatabase(movieId) {
     const idStr = String(movieId);
@@ -444,7 +445,7 @@ export function applyPermissionsToUi() {
     dom.openCollectionModalBtn?.classList.toggle('hidden', !perms.edit_collection);
 }
 
-export async function verifyAndLoadConfig(token) {
+export async function verifyAndLoadConfig(token, showWelcome = false) {
     dom.authError?.classList.add('hidden');
     if (dom.authSubmitBtn) {
         dom.authSubmitBtn.disabled = true;
@@ -473,11 +474,13 @@ export async function verifyAndLoadConfig(token) {
         localStorage.setItem(TOKEN_STORAGE_KEY, token);
 
         applyPermissionsToUi();
+        const loadPromise = startBackgroundDatabaseLoad();
+        if (showWelcome) {
+            playWelcomeCurtain(loadPromise);
+        }
         dom.authScreen?.classList.add('hidden');
         dom.appContainer?.classList.remove('hidden');
         updateMobileNavVisibility();
-
-        startBackgroundDatabaseLoad();
     } catch (error) {
         localStorage.removeItem(TOKEN_STORAGE_KEY);
         state.serverApiToken = '';
@@ -502,54 +505,59 @@ function isDemoEnvironment() {
 }
 
 async function loadDemoDatabase() {
+    const demoLoadPromise = (async () => {
+        try {
+            const response = await fetch('./demo_movies.json');
+            if (!response.ok) {
+                throw new Error('Could not load demo_movies.json');
+            }
+
+            const demoMovies = await response.json();
+            state.moviesDatabase = demoMovies.map((m) => ({
+                ...m,
+                movie_id: String(m.movie_id),
+                rating: parseFloat(m.rating) || 0,
+                is_new: Boolean(m.is_new)
+            }));
+            state.rawCsvMovies = state.moviesDatabase.map((m) => ({
+                movie_id: m.movie_id,
+                link: m.link || '',
+                collection: m.collection || '',
+                rating: m.rating || '',
+                last_watch: m.last_watch || '',
+                review: m.review || '',
+                is_new: m.is_new
+            }));
+
+            rebuildPeopleIndex();
+            state.hasInitializedHomeRandom = true;
+            state.isDatabaseLoaded = true;
+
+            renderHomeRandomMovies();
+            renderHomeAllMovies();
+            renderRatedMoviesPage();
+
+            if (state.pendingInitialMovieId) {
+                const exists = state.moviesDatabase.some(
+                    (m) => String(m.movie_id) === String(state.pendingInitialMovieId)
+                );
+                const targetId = state.pendingInitialMovieId;
+                state.pendingInitialMovieId = null;
+                if (exists) {
+                    openMoviePage(targetId, false);
+                }
+            }
+        } catch (error) {
+            console.error('Demo load error:', error);
+        }
+    })();
+
+    playWelcomeCurtain(demoLoadPromise);
     dom.authScreen?.classList.add('hidden');
     dom.appContainer?.classList.remove('hidden');
     updateMobileNavVisibility();
 
-    try {
-        const response = await fetch('./demo_movies.json');
-        if (!response.ok) {
-            throw new Error('Could not load demo_movies.json');
-        }
-
-        const demoMovies = await response.json();
-        state.moviesDatabase = demoMovies.map((m) => ({
-            ...m,
-            movie_id: String(m.movie_id),
-            rating: parseFloat(m.rating) || 0,
-            is_new: Boolean(m.is_new)
-        }));
-        state.rawCsvMovies = state.moviesDatabase.map((m) => ({
-            movie_id: m.movie_id,
-            link: m.link || '',
-            collection: m.collection || '',
-            rating: m.rating || '',
-            last_watch: m.last_watch || '',
-            review: m.review || '',
-            is_new: m.is_new
-        }));
-
-        rebuildPeopleIndex();
-        state.hasInitializedHomeRandom = true;
-        state.isDatabaseLoaded = true;
-
-        renderHomeRandomMovies();
-        renderHomeAllMovies();
-        renderRatedMoviesPage();
-
-        if (state.pendingInitialMovieId) {
-            const exists = state.moviesDatabase.some(
-                (m) => String(m.movie_id) === String(state.pendingInitialMovieId)
-            );
-            const targetId = state.pendingInitialMovieId;
-            state.pendingInitialMovieId = null;
-            if (exists) {
-                openMoviePage(targetId, false);
-            }
-        }
-    } catch (error) {
-        console.error('Demo load error:', error);
-    }
+    await demoLoadPromise;
 }
 
 export function initAuth() {

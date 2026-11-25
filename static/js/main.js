@@ -37,7 +37,7 @@ dom.authForm?.addEventListener('submit', (event) => {
     event.preventDefault();
     const inputToken = dom.tokenInput?.value.trim();
     if (inputToken) {
-        verifyAndLoadConfig(inputToken);
+        verifyAndLoadConfig(inputToken, true);
     }
 });
 

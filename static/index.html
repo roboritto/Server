@@ -6,6 +6,9 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
     <title>Cinema</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Elsie+Swash+Caps&display=swap">
     <link rel="stylesheet" href="/css/base.css">
     <link rel="stylesheet" href="/css/layout.css">
     <link rel="stylesheet" href="/css/components.css">
@@ -14,6 +17,7 @@
     <link rel="stylesheet" href="/css/rated.css">
     <link rel="stylesheet" href="/css/person.css">
     <link rel="stylesheet" href="/css/modals.css">
+    <link rel="stylesheet" href="/css/welcome.css">
     <link rel="stylesheet" href="/css/responsive.css">
 </head>
 <body>
@@ -33,6 +37,20 @@
                 <button type="submit" id="auth-submit-btn">Unlock Database</button>
             </form>
             <p id="auth-error" class="hidden">Invalid API Token. Please try again.</p>
+        </div>
+    </div>
+
+    <!-- 1.5. Welcome Curtain Intro Overlay -->
+    <div id="welcome-screen" class="hidden" aria-hidden="true">
+        <div class="welcome-curtain welcome-curtain-left"></div>
+        <div class="welcome-curtain welcome-curtain-right"></div>
+        <div class="welcome-spotlight"></div>
+        <div class="welcome-valance"></div>
+        <div class="welcome-title-wrap">
+            <div class="welcome-title">
+                <span>Selamat</span>
+                <span>Datang</span>
+            </div>
         </div>
     </div>
 

@@ -13,6 +13,7 @@ export const dom = {
     tokenInput: document.getElementById('token-input'),
     authSubmitBtn: document.getElementById('auth-submit-btn'),
     authError: document.getElementById('auth-error'),
+    welcomeScreen: document.getElementById('welcome-screen'),
     appContainer: document.getElementById('app-container'),
 
     // Global Navigation & Indicators
