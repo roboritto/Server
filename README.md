@@ -11,7 +11,7 @@ How to setup the server:
 6. once the packages are done installing, open .env.example and rename it to .env. inside the file you should place your tmdb_api_key and setup a password for your website in the api_token_key if you want, if not just leave it blank.
 7. you can start the server by typing “uvicorn main:app —host 100.x.x.x —port 8000” into the terminal. 
 8. try accessing the website by typing “http://100.x.x.x:8000/“ in your browser. you can change the 100.x.x.x to anything you want by changing your device’s name in tailscale.
-9. once the website is up and running, you can delete the demo_movies.json. Now you can delete or add any movie you like.
+9. once the website is up and running, you can delete the demo_movies.json and the .github file. Now you can delete or add any movie you like.
 10. if you want to access the website from other devices like your phone makes sure you have tailscale installed and connected to the same account as the server. you can’t reach your website if your devices is not connected to tailscale. 
 
 Optional Steps:  
@@ -23,4 +23,3 @@ Website sharing
 13. if you are sharing this website with other people, just repeat step 10.  
 14. you can also block other ip from seeing a specific movie by adding their ip address and the movie id in hidden_movies.json.  
 15. these other ips would also be blocked from doing some actions like deleting movies.  
-
