@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Header, HTTPException, Request, Security
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from backend.config import SERVER_API_TOKEN, TMDB_API_KEY
@@ -10,10 +10,17 @@ from backend.downloads import (
     consume_local_file_ticket,
     create_download_ticket,
     create_local_file_ticket,
+    create_local_stream_ticket,
     extract_movie_links,
+    get_hls_file_path,
+    get_local_stream_ticket,
     movie_in_collection,
     normalize_local_path,
+    render_subtitle_track_vtt,
     resolve_local_file,
+    start_hls_session,
+    stop_hls_session,
+    stream_transcoded_video,
 )
 from backend.models import (
     CollectionDownloadRequest,
@@ -337,11 +344,140 @@ def download_local_file(ticket: str, request: Request):
     )
 
 
+@app.post("/api/local-files/stream-ticket", dependencies=[Security(verify_token)])
+def request_local_stream_ticket(payload: LocalFileDownloadRequest, request: Request):
+    """Validates a linked local video path and issues a reusable streaming ticket."""
+    target_id = str(payload.movie_id).strip()
+    if target_id in get_hidden_ids_for_request(request):
+        raise HTTPException(status_code=404, detail="Movie not found")
+
+    requested_rel = normalize_local_path(payload.path)
+    if not requested_rel:
+        raise HTTPException(status_code=400, detail="File path is required")
+
+    rows = read_csv()
+    movie_row = next(
+        (r for r in rows if str(r.get("movie_id", "")).strip() == target_id),
+        None,
+    )
+    if not movie_row:
+        raise HTTPException(status_code=404, detail="Movie not found")
+
+    saved_entries = [
+        normalize_local_path(e).lower()
+        for e in extract_movie_links(movie_row.get("link", ""))
+    ]
+    if requested_rel.lower() not in saved_entries:
+        raise HTTPException(status_code=403, detail="Requested file is not linked to this movie")
+
+    resolved_path = resolve_local_file(requested_rel)
+    if not resolved_path:
+        raise HTTPException(
+            status_code=404,
+            detail="Local file not found on server (check LOCAL_MOVIES_DIR in .env)",
+        )
+
+    return create_local_stream_ticket(resolved_path, get_client_ip(request))
+
+
+@app.get("/api/local-files/stream")
+def stream_local_file(ticket: str, request: Request, start: float = 0.0):
+    """Streams a local video inline (direct FileResponse or FFmpeg fragmented MP4 for MKV)."""
+    ticket_data = get_local_stream_ticket(ticket, get_client_ip(request))
+    if not ticket_data:
+        raise HTTPException(status_code=403, detail="Invalid or expired stream ticket")
+
+    if ticket_data.get("mode") == "ffmpeg":
+        return StreamingResponse(
+            stream_transcoded_video(ticket_data, start_seconds=max(0.0, start)),
+            media_type="video/mp4",
+        )
+
+    return FileResponse(
+        path=ticket_data["path"],
+        filename=ticket_data["filename"],
+        media_type=ticket_data["media_type"],
+        content_disposition_type="inline",
+    )
+
+
+@app.get("/api/local-files/subtitles")
+def get_local_subtitle_track(
+    ticket: str, track: int, request: Request, offset: float = 0.0
+):
+    """Serves a sidecar .srt/.vtt or embedded MKV subtitle track converted to WebVTT."""
+    ticket_data = get_local_stream_ticket(ticket, get_client_ip(request))
+    if not ticket_data:
+        raise HTTPException(status_code=403, detail="Invalid or expired stream ticket")
+
+    vtt_content = render_subtitle_track_vtt(
+        ticket_data, track_index=track, offset_seconds=max(0.0, offset)
+    )
+    if vtt_content is None:
+        raise HTTPException(status_code=404, detail="Subtitle track not found")
+
+    return Response(content=vtt_content, media_type="text/vtt; charset=utf-8")
+
+
 # --- Direct Movie URL Deep-Link & Static Web App ---
 @app.get("/{movie_id:int}")
 def serve_movie_url(movie_id: int):
     """Serves index.html for direct movie ID URLs like /1234."""
     return FileResponse("static/index.html")
+
+
+@app.post("/api/local-files/hls-start")
+def start_local_hls_stream(ticket: str, request: Request, start: float = 0.0):
+    """Starts (or seeks) an FFmpeg HLS session for universal mobile/desktop Firefox playback."""
+    ticket_data = get_local_stream_ticket(ticket, get_client_ip(request))
+    if not ticket_data:
+        raise HTTPException(status_code=403, detail="Invalid or expired stream ticket")
+
+    session_id = start_hls_session(ticket_data, start_seconds=max(0.0, start))
+    if not session_id:
+        raise HTTPException(
+            status_code=500,
+            detail="FFmpeg could not start HLS stream for this video.",
+        )
+
+    return {
+        "session_id": session_id,
+        "playlist_url": f"/api/local-files/hls/{ticket}/{session_id}/index.m3u8",
+    }
+
+
+@app.get("/api/local-files/hls/{ticket}/{session_id}/{filename}")
+def serve_local_hls_file(ticket: str, session_id: str, filename: str, request: Request):
+    """Serves the live HLS playlist (.m3u8) and video segments (.ts)."""
+    ticket_data = get_local_stream_ticket(ticket, get_client_ip(request))
+    if not ticket_data:
+        raise HTTPException(status_code=403, detail="Invalid or expired stream ticket")
+
+    file_path = get_hls_file_path(ticket_data, session_id, filename)
+    if not file_path:
+        raise HTTPException(status_code=404, detail="HLS segment not found")
+
+    if filename.endswith(".m3u8"):
+        return FileResponse(
+            path=str(file_path),
+            media_type="application/vnd.apple.mpegurl",
+            headers={"Cache-Control": "no-store"},
+        )
+
+    return FileResponse(
+        path=str(file_path),
+        media_type="video/mp2t",
+        headers={"Cache-Control": "no-cache"},
+    )
+
+
+@app.post("/api/local-files/stream-stop")
+def stop_local_hls_stream(ticket: str, request: Request):
+    """Stops the active FFmpeg process and cleans up temp HLS files when closing the player."""
+    ticket_data = get_local_stream_ticket(ticket, get_client_ip(request))
+    if ticket_data:
+        stop_hls_session(ticket_data)
+    return {"status": "ok"}
 
 
 app.mount("/", StaticFiles(directory="static", html=True), name="static")

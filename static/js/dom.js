@@ -68,6 +68,7 @@ export const dom = {
     movieHearts: document.getElementById('movie-hearts'),
     movieLastWatch: document.getElementById('movie-last-watch'),
     movieSynopsis: document.getElementById('movie-synopsis'),
+    openPlayModalBtn: document.getElementById('open-play-modal-btn'),
     openDownloadModalBtn: document.getElementById('open-download-modal-btn'),
     openRatingModalBtn: document.getElementById('open-rating-modal-btn'),
     openCollectionModalBtn: document.getElementById('open-collection-modal-btn'),
@@ -133,5 +134,23 @@ export const dom = {
     closeAddLinkModalBtn: document.getElementById('close-add-link-modal-btn'),
     addLinkForm: document.getElementById('add-link-form'),
     addLinkInput: document.getElementById('add-link-input'),
-    saveAddLinkBtn: document.getElementById('save-add-link-btn')
+    saveAddLinkBtn: document.getElementById('save-add-link-btn'),
+
+    // Modal 8: Local Video Player
+    videoPlayerModal: document.getElementById('video-player-modal'),
+    closeVideoPlayerBtn: document.getElementById('close-video-player-btn'),
+    videoPlayerTitle: document.getElementById('video-player-title'),
+    videoPlayerSources: document.getElementById('video-player-sources'),
+    videoSubtitleSelect: document.getElementById('video-subtitle-select'),
+    loadSrtBtn: document.getElementById('load-srt-btn'),
+    srtFileInput: document.getElementById('srt-file-input'),
+    videoPlayerStage: document.getElementById('video-player-stage'),
+    localVideoPlayer: document.getElementById('local-video-player'),
+    videoPlayPauseBtn: document.getElementById('video-play-pause-btn'),
+    videoCurrentTime: document.getElementById('video-current-time'),
+    videoSeekSlider: document.getElementById('video-seek-slider'),
+    videoTotalDuration: document.getElementById('video-total-duration'),
+    videoMuteBtn: document.getElementById('video-mute-btn'),
+    videoFullscreenBtn: document.getElementById('video-fullscreen-btn'),
+    videoPlayerError: document.getElementById('video-player-error')
 };

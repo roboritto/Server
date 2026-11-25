@@ -614,3 +614,182 @@
     background-color: var(--btn-disabled);
     cursor: not-allowed;
 }
+
+/* --- Popup 8: Local Video Player Modal --- */
+.video-player-modal-box {
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    max-width: 1000px;
+    min-height: auto;
+    padding: 1.5rem;
+    text-align: left;
+    background-color: #0b1120;
+}
+
+#video-player-header {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    padding-right: 2.25rem;
+    margin-bottom: 0.9rem;
+}
+
+#video-player-title {
+    margin-bottom: 0;
+    font-size: 1.15rem;
+}
+
+#video-player-sources {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
+
+.video-source-pill {
+    padding: 0.3rem 0.7rem;
+    border-radius: 9999px;
+    border: 1px solid var(--border-color);
+    background-color: var(--bg-primary);
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.video-source-pill:hover {
+    background-color: var(--bg-surface-hover);
+    color: var(--text-white);
+}
+
+.video-source-pill.active {
+    background-color: var(--accent-blue);
+    border-color: var(--accent-blue);
+    color: var(--text-white);
+}
+
+#video-player-sub-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-left: auto;
+}
+
+#video-subtitle-select {
+    padding: 0.35rem 0.65rem;
+    border-radius: 0.45rem;
+    border: 1px solid var(--border-color);
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: 0.82rem;
+    outline: none;
+    max-width: 220px;
+}
+
+#video-subtitle-select:focus {
+    border-color: var(--accent-blue);
+}
+
+#load-srt-btn {
+    padding: 0.35rem 0.75rem;
+    border-radius: 0.45rem;
+    border: 1px solid var(--border-color);
+    background-color: var(--bg-surface);
+    color: var(--text-primary);
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background-color 0.15s, border-color 0.15s;
+}
+
+#load-srt-btn:hover {
+    background-color: var(--bg-surface-hover);
+    border-color: var(--border-hover);
+}
+
+#video-player-stage {
+    width: 100%;
+    background-color: var(--bg-black);
+    border-radius: 0.5rem;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+#video-player-stage:fullscreen {
+    border-radius: 0;
+    justify-content: center;
+}
+
+#local-video-player {
+    width: 100%;
+    max-height: 70vh;
+    background-color: var(--bg-black);
+    display: block;
+    outline: none;
+    cursor: pointer;
+}
+
+#video-player-stage:fullscreen #local-video-player {
+    flex: 1;
+    max-height: calc(100vh - 54px);
+    object-fit: contain;
+}
+
+#video-custom-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    padding: 0.55rem 0.85rem;
+    background-color: rgba(15, 23, 42, 0.96);
+    border-top: 1px solid var(--border-color);
+}
+
+.video-ctrl-btn {
+    width: 34px;
+    height: 34px;
+    border-radius: 0.4rem;
+    border: none;
+    background: transparent;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background-color 0.15s, color 0.15s;
+}
+
+.video-ctrl-btn:hover {
+    background-color: var(--bg-surface-hover);
+    color: var(--text-white);
+}
+
+.video-ctrl-btn svg {
+    width: 18px;
+    height: 18px;
+}
+
+.video-time-label {
+    font-size: 0.82rem;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+#video-seek-slider {
+    flex: 1;
+    accent-color: var(--accent-blue);
+    cursor: pointer;
+    min-width: 60px;
+}
+
+#video-player-error {
+    margin-top: 0.75rem;
+    font-size: 0.88rem;
+    color: #fca5a5;
+    line-height: 1.45;
+}

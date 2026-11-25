@@ -276,6 +276,13 @@
 
                         <!-- Single Download Popup Button + Rate Heart Button + Add to Collection Button -->
                         <div id="movie-actions-row">
+                            <button id="open-play-modal-btn" class="play-movie-btn hidden" type="button" title="Play Local Video">
+                                <svg viewBox="0 0 24 24" fill="currentColor" stroke="none">
+                                    <polygon points="6 4 20 12 6 20 6 4"></polygon>
+                                </svg>
+                                <span>Play</span>
+                            </button>
+
                             <button id="open-download-modal-btn" class="download-link-btn" title="Download Movie">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
@@ -461,8 +468,61 @@
             </div>
         </div>
 
+        <!-- Popup 8: Local Video Player Modal -->
+        <div id="video-player-modal" class="modal-overlay hidden">
+            <div id="video-player-modal-content" class="modal-box video-player-modal-box">
+                <button id="close-video-player-btn" class="modal-close-btn" type="button">×</button>
+                <div id="video-player-header">
+                    <h2 id="video-player-title" class="modal-title">Now Playing</h2>
+                    <div id="video-player-sources" class="hidden"></div>
+                    <div id="video-player-sub-controls">
+                        <select id="video-subtitle-select" aria-label="Subtitles">
+                            <option value="">Subtitles: Off</option>
+                        </select>
+                        <button id="load-srt-btn" type="button" title="Load a local .srt or .vtt subtitle file">Load .srt</button>
+                        <input type="file" id="srt-file-input" class="hidden" accept=".srt,.vtt">
+                    </div>
+                </div>
+                <div id="video-player-stage">
+                    <video id="local-video-player" playsinline preload="metadata"></video>
+                    <div id="video-custom-controls">
+                        <button id="video-play-pause-btn" class="video-ctrl-btn" type="button" title="Play / Pause" aria-label="Play or Pause">
+                            <svg viewBox="0 0 24 24" fill="currentColor" stroke="none">
+                                <polygon points="6 4 20 12 6 20 6 4"></polygon>
+                            </svg>
+                        </button>
+                        <span id="video-current-time" class="video-time-label">0:00</span>
+                        <input type="range" id="video-seek-slider" min="0" max="0" value="0" step="1" aria-label="Seek video">
+                        <span id="video-total-duration" class="video-time-label">0:00</span>
+                        <button id="video-mute-btn" class="video-ctrl-btn" type="button" title="Mute / Unmute" aria-label="Mute or Unmute">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                                <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
+                                <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                            </svg>
+                        </button>
+                        <button id="video-fullscreen-btn" class="video-ctrl-btn" type="button" title="Fullscreen" aria-label="Toggle Fullscreen">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="15 3 21 3 21 9"></polyline>
+                                <polyline points="9 21 3 21 3 15"></polyline>
+                                <line x1="21" y1="3" x2="14" y2="10"></line>
+                                <line x1="3" y1="21" x2="10" y2="14"></line>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                <div id="video-ffmpeg-seek-row" class="hidden">
+                    <span id="video-ffmpeg-current-time">0:00</span>
+                    <input type="range" id="video-ffmpeg-seek-slider" min="0" max="0" value="0" step="1" aria-label="Seek video">
+                    <span id="video-ffmpeg-duration">0:00</span>
+                </div>
+                <p id="video-player-error" class="hidden"></p>
+            </div>
+        </div>
+
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js" defer></script>
     <script type="module" src="/js/main.js"></script>
 </body>
 </html>

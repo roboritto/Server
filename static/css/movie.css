@@ -199,6 +199,32 @@
     margin-top: 0.75rem;
 }
 
+.play-movie-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.65rem 1.35rem;
+    border: none;
+    border-radius: 0.5rem;
+    background-color: var(--text-white);
+    color: var(--bg-black);
+    font-weight: 700;
+    font-size: 0.95rem;
+    cursor: pointer;
+    transition: background-color 0.2s, transform 0.15s;
+}
+
+.play-movie-btn:hover {
+    background-color: var(--text-secondary);
+    transform: translateY(-1px);
+}
+
+.play-movie-btn svg {
+    width: 18px;
+    height: 18px;
+}
+
 .download-link-btn {
     display: inline-flex;
     align-items: center;

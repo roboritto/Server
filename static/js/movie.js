@@ -6,7 +6,7 @@ import {
     parseLinkArray,
     triggerDiceRollAnimation
 } from './utils.js';
-import { pushCurrentStateToHistory, navigateToPage } from './navigation.js';
+import { pushCurrentStateToHistory, navigateToPage, openModal, closeModal } from './navigation.js';
 import { openPersonPage } from './person.js';
 
 function renderRatingHearts(ratingValue) {
@@ -222,6 +222,568 @@ async function handleDownloadLocalFile(movieId, filePath, btnEl) {
     }
 }
 
+let activeStreamRequestId = 0;
+let activeManualSubtitleBlobUrl = null;
+let activeHlsInstance = null;
+const activeStreamState = {
+    ticket: '',
+    mode: 'direct',
+    duration: 0,
+    seekOffset: 0,
+    isScrubbing: false,
+    serverSubtitles: [],
+    manualSubtitles: [] // [{ label, rawText }]
+};
+
+const PLAYER_PLAY_SVG = `
+    <svg viewBox="0 0 24 24" fill="currentColor" stroke="none">
+        <polygon points="6 4 20 12 6 20 6 4"></polygon>
+    </svg>
+`;
+const PLAYER_PAUSE_SVG = `
+    <svg viewBox="0 0 24 24" fill="currentColor" stroke="none">
+        <rect x="6" y="4" width="4" height="16"></rect>
+        <rect x="14" y="4" width="4" height="16"></rect>
+    </svg>
+`;
+const PLAYER_VOL_ON_SVG = `
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+        <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
+        <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+    </svg>
+`;
+const PLAYER_VOL_OFF_SVG = `
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+        <line x1="23" y1="9" x2="17" y2="15"></line>
+        <line x1="17" y1="9" x2="23" y2="15"></line>
+    </svg>
+`;
+
+function formatVideoTime(totalSeconds) {
+    const secs = Math.max(0, Math.floor(Number(totalSeconds) || 0));
+    const h = Math.floor(secs / 3600);
+    const m = Math.floor((secs % 3600) / 60);
+    const s = secs % 60;
+    if (h > 0) {
+        return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    }
+    return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+function parseSubtitleTimestamp(tsStr) {
+    const parts = tsStr.replace(',', '.').split(':');
+    if (parts.length === 3) {
+        return parseInt(parts[0], 10) * 3600 + parseInt(parts[1], 10) * 60 + parseFloat(parts[2]);
+    }
+    if (parts.length === 2) {
+        return parseInt(parts[0], 10) * 60 + parseFloat(parts[1]);
+    }
+    return 0;
+}
+
+function formatVttTimestamp(seconds) {
+    const msTotal = Math.max(0, Math.round(seconds * 1000));
+    const h = Math.floor(msTotal / 3600000);
+    const m = Math.floor((msTotal % 3600000) / 60000);
+    const s = Math.floor((msTotal % 60000) / 1000);
+    const ms = msTotal % 1000;
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${String(ms).padStart(3, '0')}`;
+}
+
+function convertSrtToVtt(rawText, offsetSeconds = 0) {
+    const timingRe = /^((?:\d{1,2}:)?\d{2}:\d{2}[.,]\d{3})\s*-->\s*((?:\d{1,2}:)?\d{2}:\d{2}[.,]\d{3})(.*)$/;
+    const blocks = String(rawText || '')
+        .replace(/^\uFEFF/, '')
+        .replace(/\r\n/g, '\n')
+        .replace(/\r/g, '\n')
+        .trim()
+        .split(/\n\s*\n/);
+
+    const out = ['WEBVTT', ''];
+    for (const block of blocks) {
+        const lines = block.split('\n').filter((l) => l.trim().length > 0);
+        if (lines.length === 0) continue;
+        const firstUpper = lines[0].trim().toUpperCase();
+        if (firstUpper.startsWith('WEBVTT') || firstUpper.startsWith('NOTE')) continue;
+
+        const timingIdx = lines.findIndex((l) => timingRe.test(l.trim()));
+        if (timingIdx === -1) continue;
+
+        const match = lines[timingIdx].trim().match(timingRe);
+        if (!match) continue;
+
+        const start = parseSubtitleTimestamp(match[1]) - offsetSeconds;
+        const end = parseSubtitleTimestamp(match[2]) - offsetSeconds;
+        if (end <= 0) continue;
+
+        const cueLines = lines.slice(timingIdx + 1);
+        if (cueLines.length === 0) continue;
+
+        out.push(`${formatVttTimestamp(Math.max(0, start))} --> ${formatVttTimestamp(end)}${match[3]}`);
+        out.push(...cueLines);
+        out.push('');
+    }
+    return out.join('\n');
+}
+
+function clearVideoSubtitleTracks() {
+    if (activeManualSubtitleBlobUrl) {
+        URL.revokeObjectURL(activeManualSubtitleBlobUrl);
+        activeManualSubtitleBlobUrl = null;
+    }
+    if (!dom.localVideoPlayer) return;
+    dom.localVideoPlayer.querySelectorAll('track').forEach((t) => t.remove());
+}
+
+function rebuildSubtitleSelectOptions(selectedValue = '') {
+    if (!dom.videoSubtitleSelect) return;
+    dom.videoSubtitleSelect.innerHTML = '<option value="">Subtitles: Off</option>';
+
+    activeStreamState.serverSubtitles.forEach((sub) => {
+        const opt = document.createElement('option');
+        opt.value = `server:${sub.index}`;
+        opt.textContent = sub.label;
+        dom.videoSubtitleSelect.appendChild(opt);
+    });
+
+    activeStreamState.manualSubtitles.forEach((sub, idx) => {
+        const opt = document.createElement('option');
+        opt.value = `manual:${idx}`;
+        opt.textContent = sub.label;
+        dom.videoSubtitleSelect.appendChild(opt);
+    });
+
+    dom.videoSubtitleSelect.value = selectedValue;
+}
+
+function applySelectedSubtitleTrack() {
+    clearVideoSubtitleTracks();
+    if (!dom.localVideoPlayer || !dom.videoSubtitleSelect) return;
+
+    const value = dom.videoSubtitleSelect.value;
+    if (!value) return;
+
+    const offset = activeStreamState.mode === 'ffmpeg' ? activeStreamState.seekOffset : 0;
+    let trackSrc = '';
+    let trackLabel = 'Subtitles';
+
+    if (value.startsWith('server:')) {
+        const idx = parseInt(value.slice('server:'.length), 10);
+        const sub = activeStreamState.serverSubtitles.find((s) => s.index === idx);
+        if (!sub || !activeStreamState.ticket) return;
+        trackLabel = sub.label;
+        trackSrc = `/api/local-files/subtitles?ticket=${encodeURIComponent(activeStreamState.ticket)}&track=${idx}&offset=${offset}`;
+    } else if (value.startsWith('manual:')) {
+        const idx = parseInt(value.slice('manual:'.length), 10);
+        const sub = activeStreamState.manualSubtitles[idx];
+        if (!sub) return;
+        trackLabel = sub.label;
+        const vtt = convertSrtToVtt(sub.rawText, offset);
+        const blob = new Blob([vtt], { type: 'text/vtt;charset=utf-8' });
+        activeManualSubtitleBlobUrl = URL.createObjectURL(blob);
+        trackSrc = activeManualSubtitleBlobUrl;
+    }
+
+    if (!trackSrc) return;
+
+    const trackEl = document.createElement('track');
+    trackEl.kind = 'subtitles';
+    trackEl.label = trackLabel;
+    trackEl.srclang = 'en';
+    trackEl.src = trackSrc;
+    trackEl.default = true;
+    dom.localVideoPlayer.appendChild(trackEl);
+
+    if (trackEl.track) {
+        trackEl.track.mode = 'showing';
+    }
+}
+
+function destroyActiveHls() {
+    if (activeHlsInstance) {
+        activeHlsInstance.destroy();
+        activeHlsInstance = null;
+    }
+}
+
+function notifyServerStopStream(ticket) {
+    if (!ticket) return;
+    fetch(`/api/local-files/stream-stop?ticket=${encodeURIComponent(ticket)}`, {
+        method: 'POST',
+        keepalive: true
+    }).catch(() => {});
+}
+
+export function syncVideoControlIcons() {
+    if (!dom.localVideoPlayer) return;
+    if (dom.videoPlayPauseBtn) {
+        dom.videoPlayPauseBtn.innerHTML = dom.localVideoPlayer.paused
+            ? PLAYER_PLAY_SVG
+            : PLAYER_PAUSE_SVG;
+    }
+    if (dom.videoMuteBtn) {
+        dom.videoMuteBtn.innerHTML = dom.localVideoPlayer.muted
+            ? PLAYER_VOL_OFF_SVG
+            : PLAYER_VOL_ON_SVG;
+    }
+}
+
+function syncSeekBarMetrics(currentSec, totalSec) {
+    const safeTotal = Math.max(0, Math.floor(Number(totalSec) || 0));
+    const safeCurrent = Math.max(0, Math.min(safeTotal || currentSec, Math.floor(Number(currentSec) || 0)));
+
+    if (dom.videoSeekSlider) {
+        dom.videoSeekSlider.max = String(safeTotal);
+        dom.videoSeekSlider.value = String(safeCurrent);
+    }
+    if (dom.videoCurrentTime) {
+        dom.videoCurrentTime.textContent = formatVideoTime(safeCurrent);
+    }
+    if (dom.videoTotalDuration) {
+        dom.videoTotalDuration.textContent = formatVideoTime(safeTotal);
+    }
+}
+
+function stopLocalVideoPlayback() {
+    destroyActiveHls();
+    clearVideoSubtitleTracks();
+    if (activeStreamState.ticket) {
+        notifyServerStopStream(activeStreamState.ticket);
+    }
+    if (!dom.localVideoPlayer) return;
+    dom.localVideoPlayer.onerror = null;
+    dom.localVideoPlayer.pause();
+    dom.localVideoPlayer.removeAttribute('src');
+    dom.localVideoPlayer.load();
+    syncVideoControlIcons();
+    syncSeekBarMetrics(0, 0);
+}
+
+async function attachFfmpegStream(ticket, startSeconds, requestId, ffmpegAvailable) {
+    if (!dom.localVideoPlayer) return;
+    destroyActiveHls();
+
+    const canNativeHls = Boolean(
+        dom.localVideoPlayer.canPlayType('application/vnd.apple.mpegurl')
+    );
+    const canHlsJs = Boolean(window.Hls && window.Hls.isSupported());
+
+    if (canNativeHls || canHlsJs) {
+        const hlsRes = await fetch(
+            `/api/local-files/hls-start?ticket=${encodeURIComponent(ticket)}&start=${startSeconds}`,
+            { method: 'POST' }
+        );
+        const hlsData = await hlsRes.json().catch(() => ({}));
+        if (requestId !== activeStreamRequestId) return;
+
+        if (!hlsRes.ok || !hlsData.playlist_url) {
+            throw new Error(hlsData.detail || 'Could not start HLS video stream.');
+        }
+
+        if (canHlsJs) {
+            const hls = new window.Hls({
+                lowLatencyMode: false,
+                backBufferLength: 30
+            });
+            activeHlsInstance = hls;
+            hls.on(window.Hls.Events.ERROR, (_event, errData) => {
+                if (errData?.fatal && requestId === activeStreamRequestId && dom.videoPlayerError) {
+                    dom.videoPlayerError.textContent =
+                        'Playback interrupted. Try seeking slightly or downloading the file.';
+                    dom.videoPlayerError.classList.remove('hidden');
+                }
+            });
+            hls.loadSource(hlsData.playlist_url);
+            hls.attachMedia(dom.localVideoPlayer);
+            hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
+                if (requestId !== activeStreamRequestId) return;
+                applySelectedSubtitleTrack();
+                dom.localVideoPlayer.play().catch(() => syncVideoControlIcons());
+            });
+        } else {
+            // Native HLS (iOS Firefox / Safari)
+            dom.localVideoPlayer.src = hlsData.playlist_url;
+            applySelectedSubtitleTrack();
+            dom.localVideoPlayer.play().catch(() => syncVideoControlIcons());
+        }
+        return;
+    }
+
+    // Offline fallback if hls.js CDN couldn't load on non-Safari browsers
+    dom.localVideoPlayer.onerror = () => {
+        if (requestId !== activeStreamRequestId || !dom.videoPlayerError) return;
+        dom.videoPlayerError.textContent = ffmpegAvailable
+            ? 'Your browser could not play this stream directly. Try downloading the file instead.'
+            : 'MKV/HEVC playback requires FFmpeg installed on your server (add ffmpeg to PATH or set FFMPEG_PATH in .env).';
+        dom.videoPlayerError.classList.remove('hidden');
+    };
+    dom.localVideoPlayer.src = `/api/local-files/stream?ticket=${encodeURIComponent(ticket)}&start=${startSeconds}`;
+    applySelectedSubtitleTrack();
+    dom.localVideoPlayer.play().catch(() => syncVideoControlIcons());
+}
+
+export function handleVideoLoadedMetadata() {
+    if (!dom.localVideoPlayer) return;
+    if (activeStreamState.mode === 'direct' && Number.isFinite(dom.localVideoPlayer.duration)) {
+        activeStreamState.duration = dom.localVideoPlayer.duration;
+        syncSeekBarMetrics(dom.localVideoPlayer.currentTime, activeStreamState.duration);
+    }
+    syncVideoControlIcons();
+}
+
+export function handleVideoTimeUpdate() {
+    if (activeStreamState.isScrubbing || !dom.localVideoPlayer) return;
+    const rawTime = dom.localVideoPlayer.currentTime || 0;
+    const currentTotal = activeStreamState.mode === 'ffmpeg'
+        ? activeStreamState.seekOffset + rawTime
+        : rawTime;
+    const totalDur = activeStreamState.duration || (Number.isFinite(dom.localVideoPlayer.duration) ? dom.localVideoPlayer.duration : 0);
+    syncSeekBarMetrics(currentTotal, totalDur);
+}
+
+export function handleVideoSeekInput() {
+    if (!dom.videoSeekSlider) return;
+    activeStreamState.isScrubbing = true;
+    if (dom.videoCurrentTime) {
+        dom.videoCurrentTime.textContent = formatVideoTime(dom.videoSeekSlider.value);
+    }
+}
+
+export async function handleVideoSeekCommit() {
+    activeStreamState.isScrubbing = false;
+    if (!dom.videoSeekSlider || !dom.localVideoPlayer) return;
+
+    const targetSec = Math.max(0, Number(dom.videoSeekSlider.value) || 0);
+
+    if (activeStreamState.mode === 'direct') {
+        dom.localVideoPlayer.currentTime = targetSec;
+        return;
+    }
+
+    if (!activeStreamState.ticket) return;
+    const requestId = ++activeStreamRequestId;
+    activeStreamState.seekOffset = targetSec;
+    syncSeekBarMetrics(targetSec, activeStreamState.duration);
+
+    if (dom.videoPlayerError) {
+        dom.videoPlayerError.textContent = '';
+        dom.videoPlayerError.classList.add('hidden');
+    }
+
+    try {
+        dom.localVideoPlayer.pause();
+        await attachFfmpegStream(activeStreamState.ticket, targetSec, requestId, true);
+    } catch (error) {
+        if (requestId !== activeStreamRequestId) return;
+        console.error('Seek error:', error);
+        if (dom.videoPlayerError) {
+            dom.videoPlayerError.textContent = error.message || 'Could not seek video.';
+            dom.videoPlayerError.classList.remove('hidden');
+        }
+    }
+}
+
+export function toggleVideoPlayPause() {
+    if (!dom.localVideoPlayer) return;
+    if (dom.localVideoPlayer.paused) {
+        dom.localVideoPlayer.play().catch(() => {});
+    } else {
+        dom.localVideoPlayer.pause();
+    }
+    syncVideoControlIcons();
+}
+
+export function toggleVideoMute() {
+    if (!dom.localVideoPlayer) return;
+    dom.localVideoPlayer.muted = !dom.localVideoPlayer.muted;
+    syncVideoControlIcons();
+}
+
+export function toggleVideoFullscreen() {
+    const stage = dom.videoPlayerStage;
+    const video = dom.localVideoPlayer;
+    if (!stage || !video) return;
+
+    if (document.fullscreenElement || document.webkitFullscreenElement) {
+        (document.exitFullscreen || document.webkitExitFullscreen)?.call(document);
+        return;
+    }
+
+    if (stage.requestFullscreen) {
+        stage.requestFullscreen().catch(() => {
+            video.webkitEnterFullscreen?.();
+        });
+    } else if (stage.webkitRequestFullscreen) {
+        stage.webkitRequestFullscreen();
+    } else if (video.webkitEnterFullscreen) {
+        video.webkitEnterFullscreen();
+    }
+}
+
+export function handleSubtitleSelectionChange() {
+    applySelectedSubtitleTrack();
+}
+
+export async function handleManualSrtUpload(event) {
+    const file = event.target?.files?.[0];
+    if (!file) return;
+
+    try {
+        const rawText = await file.text();
+        const label = file.name.replace(/\.(srt|vtt)$/i, '');
+        const newIdx = activeStreamState.manualSubtitles.push({ label, rawText }) - 1;
+        rebuildSubtitleSelectOptions(`manual:${newIdx}`);
+        applySelectedSubtitleTrack();
+    } catch (error) {
+        console.error('Could not read subtitle file:', error);
+        alert('Could not read the selected subtitle file.');
+    } finally {
+        if (dom.srtFileInput) dom.srtFileInput.value = '';
+    }
+}
+
+async function loadLocalVideoSource(movieId, filePath) {
+    if (!dom.localVideoPlayer) return;
+
+    const requestId = ++activeStreamRequestId;
+    stopLocalVideoPlayback();
+    activeStreamState.ticket = '';
+    activeStreamState.mode = 'direct';
+    activeStreamState.duration = 0;
+    activeStreamState.seekOffset = 0;
+    activeStreamState.isScrubbing = false;
+    activeStreamState.serverSubtitles = [];
+    rebuildSubtitleSelectOptions('');
+
+    if (dom.videoPlayerError) {
+        dom.videoPlayerError.textContent = '';
+        dom.videoPlayerError.classList.add('hidden');
+    }
+
+    try {
+        const response = await fetch('/api/local-files/stream-ticket', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-api-token': state.serverApiToken
+            },
+            body: JSON.stringify({
+                movie_id: String(movieId),
+                path: filePath
+            })
+        });
+
+        const data = await response.json().catch(() => ({}));
+        if (requestId !== activeStreamRequestId) return;
+
+        if (!response.ok) {
+            throw new Error(data.detail || 'Could not start video stream.');
+        }
+
+        activeStreamState.ticket = data.ticket;
+        activeStreamState.mode = data.mode || 'direct';
+        activeStreamState.duration = Number(data.duration) || 0;
+        activeStreamState.seekOffset = 0;
+        activeStreamState.serverSubtitles = Array.isArray(data.subtitles) ? data.subtitles : [];
+        syncSeekBarMetrics(0, activeStreamState.duration);
+
+        const defaultSub = activeStreamState.serverSubtitles.length > 0
+            ? `server:${activeStreamState.serverSubtitles[0].index}`
+            : '';
+        rebuildSubtitleSelectOptions(defaultSub);
+
+        if (activeStreamState.mode === 'ffmpeg') {
+            await attachFfmpegStream(data.ticket, 0, requestId, Boolean(data.ffmpeg_available));
+        } else {
+            dom.localVideoPlayer.onerror = () => {
+                if (requestId !== activeStreamRequestId || !dom.videoPlayerError) return;
+                dom.videoPlayerError.textContent =
+                    'Your browser could not play this video format directly. Try downloading the file instead.';
+                dom.videoPlayerError.classList.remove('hidden');
+            };
+            dom.localVideoPlayer.src = `/api/local-files/stream?ticket=${encodeURIComponent(data.ticket)}`;
+            applySelectedSubtitleTrack();
+            dom.localVideoPlayer.play().catch(() => syncVideoControlIcons());
+        }
+    } catch (error) {
+        if (requestId !== activeStreamRequestId) return;
+        console.error('Local video stream error:', error);
+        if (dom.videoPlayerError) {
+            dom.videoPlayerError.textContent = error.message || 'Failed to load local video.';
+            dom.videoPlayerError.classList.remove('hidden');
+        }
+    }
+}
+
+export function openVideoPlayerForCurrentMovie() {
+    if (state.isDemoMode) {
+        alert('Local video playback requires the self-hosted Python backend.');
+        return;
+    }
+    if (!state.currentMovieId || !dom.videoPlayerModal) return;
+
+    const movie = state.moviesDatabase.find((m) => String(m.movie_id) === String(state.currentMovieId));
+    if (!movie) return;
+
+    const localPaths = parseLinkArray(movie.link).filter((entry) => !isHttpLink(entry));
+    if (localPaths.length === 0) return;
+
+    activeStreamState.manualSubtitles = [];
+
+    if (dom.videoPlayerTitle) {
+        dom.videoPlayerTitle.textContent = movie.title || `Movie #${movie.movie_id}`;
+    }
+
+    if (dom.videoPlayerSources) {
+        dom.videoPlayerSources.innerHTML = '';
+        if (localPaths.length > 1) {
+            dom.videoPlayerSources.classList.remove('hidden');
+            localPaths.forEach((relPath, idx) => {
+                const fileName = relPath.split(/[\\/]/).pop() || `Video ${idx + 1}`;
+                const pillBtn = document.createElement('button');
+                pillBtn.type = 'button';
+                pillBtn.className = `video-source-pill${idx === 0 ? ' active' : ''}`;
+                pillBtn.textContent = `Video ${idx + 1}`;
+                pillBtn.title = fileName;
+                pillBtn.addEventListener('click', () => {
+                    dom.videoPlayerSources
+                        .querySelectorAll('.video-source-pill')
+                        .forEach((btn) => btn.classList.remove('active'));
+                    pillBtn.classList.add('active');
+                    loadLocalVideoSource(movie.movie_id, relPath);
+                });
+                dom.videoPlayerSources.appendChild(pillBtn);
+            });
+        } else {
+            dom.videoPlayerSources.classList.add('hidden');
+        }
+    }
+
+    openModal(dom.videoPlayerModal);
+    loadLocalVideoSource(movie.movie_id, localPaths[0]);
+}
+
+export function closeVideoPlayerModal() {
+    activeStreamRequestId++;
+    stopLocalVideoPlayback();
+    activeStreamState.ticket = '';
+    activeStreamState.mode = 'direct';
+    activeStreamState.duration = 0;
+    activeStreamState.seekOffset = 0;
+    activeStreamState.isScrubbing = false;
+    activeStreamState.serverSubtitles = [];
+    activeStreamState.manualSubtitles = [];
+    rebuildSubtitleSelectOptions('');
+    if (dom.srtFileInput) dom.srtFileInput.value = '';
+    if (dom.videoPlayerError) {
+        dom.videoPlayerError.textContent = '';
+        dom.videoPlayerError.classList.add('hidden');
+    }
+    closeModal(dom.videoPlayerModal);
+}
+
 export function openMoviePage(movieId, recordHistory = true) {
     const movie = state.moviesDatabase.find((m) => String(m.movie_id) === String(movieId));
     if (!movie || !dom.moviePage) return;
@@ -292,10 +854,16 @@ export function openMoviePage(movieId, recordHistory = true) {
         dom.movieSynopsis.textContent = movie.overview || 'No synopsis available.';
     }
 
-    // 6. Download Links (Populated inside #download-modal-links)
+    // 6. Download Links & Play Button (Populated inside #download-modal-links)
+    const links = parseLinkArray(movie.link);
+    const localPaths = links.filter((entry) => !isHttpLink(entry));
+
+    if (dom.openPlayModalBtn) {
+        dom.openPlayModalBtn.classList.toggle('hidden', localPaths.length === 0);
+    }
+
     if (dom.downloadModalLinks && dom.openDownloadModalBtn) {
         dom.downloadModalLinks.innerHTML = '';
-        const links = parseLinkArray(movie.link);
 
         if (links.length > 0) {
             dom.openDownloadModalBtn.classList.remove('hidden');

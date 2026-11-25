@@ -17,7 +17,22 @@ import {
     clearAllCatalogFilters
 } from './home.js';
 import { updateRatedFilterHeartsUI, renderRatedMoviesPage } from './rated.js';
-import { openRandomMoviePage, handleToggleHideMovie } from './movie.js';
+import {
+    openRandomMoviePage,
+    handleToggleHideMovie,
+    openVideoPlayerForCurrentMovie,
+    closeVideoPlayerModal,
+    handleSubtitleSelectionChange,
+    handleManualSrtUpload,
+    handleVideoLoadedMetadata,
+    handleVideoTimeUpdate,
+    handleVideoSeekInput,
+    handleVideoSeekCommit,
+    toggleVideoPlayPause,
+    toggleVideoMute,
+    toggleVideoFullscreen,
+    syncVideoControlIcons
+} from './movie.js';
 import {
     performTmdbSearch,
     updateModalHeartsUI,
@@ -88,6 +103,7 @@ dom.ratedFilterHearts.forEach((heartEl) => {
 });
 
 // --- 5. Movie Page & Modal Action Listeners ---
+dom.openPlayModalBtn?.addEventListener('click', openVideoPlayerForCurrentMovie);
 dom.openDownloadModalBtn?.addEventListener('click', () => openModal(dom.downloadModal));
 dom.openRatingModalBtn?.addEventListener('click', openRatingModalForCurrentMovie);
 dom.openCollectionModalBtn?.addEventListener('click', openCollectionModalForCurrentMovie);
@@ -137,6 +153,34 @@ modalCloseBindings.forEach(({ modal, closeBtns }) => {
     modal.addEventListener('click', (event) => {
         if (event.target === modal) closeModal(modal);
     });
+});
+
+dom.closeVideoPlayerBtn?.addEventListener('click', closeVideoPlayerModal);
+dom.videoPlayerModal?.addEventListener('click', (event) => {
+    if (event.target === dom.videoPlayerModal) closeVideoPlayerModal();
+});
+dom.videoSubtitleSelect?.addEventListener('change', handleSubtitleSelectionChange);
+dom.loadSrtBtn?.addEventListener('click', () => dom.srtFileInput?.click());
+dom.srtFileInput?.addEventListener('change', handleManualSrtUpload);
+dom.localVideoPlayer?.addEventListener('click', toggleVideoPlayPause);
+dom.localVideoPlayer?.addEventListener('loadedmetadata', handleVideoLoadedMetadata);
+dom.localVideoPlayer?.addEventListener('timeupdate', handleVideoTimeUpdate);
+dom.localVideoPlayer?.addEventListener('play', syncVideoControlIcons);
+dom.localVideoPlayer?.addEventListener('pause', syncVideoControlIcons);
+dom.localVideoPlayer?.addEventListener('volumechange', syncVideoControlIcons);
+dom.videoPlayPauseBtn?.addEventListener('click', toggleVideoPlayPause);
+dom.videoSeekSlider?.addEventListener('input', handleVideoSeekInput);
+dom.videoSeekSlider?.addEventListener('change', handleVideoSeekCommit);
+dom.videoMuteBtn?.addEventListener('click', toggleVideoMute);
+dom.videoFullscreenBtn?.addEventListener('click', toggleVideoFullscreen);
+document.addEventListener('keydown', (event) => {
+    if (
+        event.key === 'Escape' &&
+        dom.videoPlayerModal &&
+        !dom.videoPlayerModal.classList.contains('hidden')
+    ) {
+        closeVideoPlayerModal();
+    }
 });
 
 // --- 7. Shared Search & TMDB Search Listeners ---

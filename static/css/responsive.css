@@ -87,7 +87,8 @@
         font-size: 0.78rem;
     }
 
-    /* 5. Movie Page: Icon-Only Download Button on Mobile */
+    /* 5. Movie Page: Icon-Only Play & Download Buttons on Mobile */
+    #open-play-modal-btn,
     #open-download-modal-btn {
         width: 44px;
         height: 44px;
@@ -95,10 +96,12 @@
         gap: 0;
     }
 
+    #open-play-modal-btn span,
     #open-download-modal-btn span {
         display: none;
     }
 
+    #open-play-modal-btn svg,
     #open-download-modal-btn svg {
         width: 20px;
         height: 20px;
@@ -106,5 +109,23 @@
 
     .custom-movie-row {
         grid-template-columns: 1fr;
+    }
+
+    .video-player-modal-box {
+        padding: 1rem;
+    }
+
+    #video-player-sub-controls {
+        margin-left: 0;
+        width: 100%;
+    }
+
+    #video-subtitle-select {
+        flex: 1;
+        max-width: none;
+    }
+
+    #local-video-player {
+        max-height: 62vh;
     }
 }

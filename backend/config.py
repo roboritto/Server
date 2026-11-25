@@ -29,6 +29,11 @@ NEW_BADGE_DAYS = int(os.getenv("NEW_BADGE_DAYS", "7"))
 # Collection Download Settings
 PREFERRED_DOWNLOAD_HOST = os.getenv("PREFERRED_DOWNLOAD_HOST", "").strip().lower()
 DOWNLOAD_TICKET_TTL = 300  # 5 minutes
+STREAM_TICKET_TTL = 14400  # 4 hours
 
 # Local Video Files Base Directory (defaults to project root if blank)
 LOCAL_MOVIES_DIR = os.getenv("LOCAL_MOVIES_DIR", "").strip()
+
+# Optional FFmpeg / FFprobe paths for MKV & non-native codec streaming
+FFMPEG_PATH = os.getenv("FFMPEG_PATH", "").strip()
+FFPROBE_PATH = os.getenv("FFPROBE_PATH", "").strip()
