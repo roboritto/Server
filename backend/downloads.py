@@ -31,7 +31,19 @@ VALID_VIDEO_EXTS = {".mp4", ".mkv", ".avi", ".mov", ".webm", ".m4v", ".ts", ".wm
 BROWSER_NATIVE_EXTS = {".mp4", ".m4v", ".webm"}
 BROWSER_SAFE_VIDEO_CODECS = {"h264", "vp8", "vp9", "av1"}
 BROWSER_SAFE_AUDIO_CODECS = {"aac", "mp3", "opus", "vorbis"}
-TEXT_SUBTITLE_CODECS = {"subrip", "srt", "ass", "ssa", "webvtt", "mov_text", "text"}
+TEXT_SUBTITLE_CODECS = {
+    "subrip",
+    "srt",
+    "ass",
+    "ssa",
+    "webvtt",
+    "mov_text",
+    "tx3g",
+    "text",
+    "utf8",
+    "ttml",
+}
+IMAGE_SUBTITLE_CODECS = {"hdmv_pgs_subtitle", "dvd_subtitle", "dvb_subtitle", "xsub"}
 SUBTITLE_EXTS = {".srt", ".vtt"}
 SUBTITLE_LANG_LABELS = {
     "en": "English",
@@ -44,6 +56,14 @@ SUBTITLE_LANG_LABELS = {
     "bm": "Malay",
     "id": "Indonesian",
     "ind": "Indonesian",
+    "ar": "Arabic",
+    "ara": "Arabic",
+    "hi": "Hindi",
+    "hin": "Hindi",
+    "ta": "Tamil",
+    "tam": "Tamil",
+    "te": "Telugu",
+    "tel": "Telugu",
     "zh": "Chinese",
     "chi": "Chinese",
     "zho": "Chinese",
@@ -51,6 +71,18 @@ SUBTITLE_LANG_LABELS = {
     "jpn": "Japanese",
     "ko": "Korean",
     "kor": "Korean",
+    "fr": "French",
+    "fre": "French",
+    "fra": "French",
+    "es": "Spanish",
+    "spa": "Spanish",
+    "de": "German",
+    "ger": "German",
+    "deu": "German",
+    "th": "Thai",
+    "tha": "Thai",
+    "vi": "Vietnamese",
+    "vie": "Vietnamese",
 }
 _SUBTITLE_TIMING_RE = re.compile(
     r"((?:\d{1,2}:)?\d{2}:\d{2}[.,]\d{3})\s*-->\s*((?:\d{1,2}:)?\d{2}:\d{2}[.,]\d{3})(.*)"
@@ -288,12 +320,13 @@ def _format_subtitle_label(raw_suffix: str, fallback: str) -> str:
 
 
 def probe_local_video(file_path: Path) -> dict:
-    """Uses ffprobe (if installed) to read duration, codecs, and embedded text subtitles."""
+    """Uses ffprobe (if installed) to read duration, codecs, audio tracks, and embedded subtitles."""
     info = {
         "duration": 0.0,
         "video_codec": "",
         "video_pix_fmt": "",
         "audio_codec": "",
+        "audio_tracks": [],
         "embedded_subtitles": [],
     }
     ffprobe_bin = get_ffprobe_binary()
@@ -334,22 +367,71 @@ def probe_local_video(file_path: Path) -> dict:
             if codec_type == "video" and not info["video_codec"]:
                 info["video_codec"] = codec_name
                 info["video_pix_fmt"] = (stream.get("pix_fmt") or "").lower()
-            elif codec_type == "audio" and not info["audio_codec"]:
-                info["audio_codec"] = codec_name
-            elif codec_type == "subtitle" and codec_name in TEXT_SUBTITLE_CODECS:
+            elif codec_type == "audio":
+                if not info["audio_codec"]:
+                    info["audio_codec"] = codec_name
                 tags = stream.get("tags") or {}
+                disposition = stream.get("disposition") or {}
                 lang = (tags.get("language") or "").strip()
                 title = (tags.get("title") or "").strip()
+                channels = int(stream.get("channels") or 0)
+                channel_layout = (stream.get("channel_layout") or "").strip()
                 lang_label = SUBTITLE_LANG_LABELS.get(lang.lower(), lang.upper() if lang else "")
+
                 if title and lang_label and lang_label.lower() not in title.lower():
                     label = f"{lang_label} — {title}"
                 else:
+                    label = title or lang_label or f"Audio {len(info['audio_tracks']) + 1}"
+
+                ch_tag = ""
+                if "7.1" in channel_layout or channels == 8:
+                    ch_tag = "7.1"
+                elif "5.1" in channel_layout or channels == 6:
+                    ch_tag = "5.1"
+                elif channels == 2:
+                    ch_tag = "Stereo"
+                elif channels == 1:
+                    ch_tag = "Mono"
+
+                if ch_tag and ch_tag.lower() not in label.lower():
+                    label = f"{label} ({ch_tag})"
+
+                info["audio_tracks"].append(
+                    {
+                        "stream_index": int(stream.get("index", 0)),
+                        "codec": codec_name,
+                        "channels": channels,
+                        "language": lang[:2].lower() if lang else "",
+                        "label": label,
+                        "default": bool(disposition.get("default")),
+                    }
+                )
+            elif codec_type == "subtitle" and (
+                codec_name in TEXT_SUBTITLE_CODECS or codec_name in IMAGE_SUBTITLE_CODECS
+            ):
+                tags = stream.get("tags") or {}
+                disposition = stream.get("disposition") or {}
+                lang = (tags.get("language") or "").strip()
+                title = (tags.get("title") or "").strip()
+                lang_label = SUBTITLE_LANG_LABELS.get(lang.lower(), lang.upper() if lang else "")
+
+                if title and lang_label and lang_label.lower() not in title.lower():
+                    label = f"{lang_label} ({title})"
+                else:
                     label = title or lang_label or f"Track {len(info['embedded_subtitles']) + 1}"
+
+                if disposition.get("forced") and "forced" not in label.lower():
+                    label = f"{label} (Forced)"
+                if disposition.get("hearing_impaired") and "sdh" not in label.lower():
+                    label = f"{label} (SDH)"
+
+                is_image = codec_name in IMAGE_SUBTITLE_CODECS
                 info["embedded_subtitles"].append(
                     {
-                        "source": "embedded",
+                        "source": "embedded_bitmap" if is_image else "embedded",
+                        "render_mode": "burn" if is_image else "text",
                         "stream_index": int(stream.get("index", 0)),
-                        "label": f"{label} (Embedded)",
+                        "label": label,
                         "language": lang[:2].lower() if lang else "",
                     }
                 )
@@ -408,6 +490,7 @@ def find_sidecar_subtitles(video_path: Path) -> List[dict]:
         tracks.append(
             {
                 "source": "file",
+                "render_mode": "text",
                 "path": resolved,
                 "label": label,
                 "language": "",
@@ -455,13 +538,25 @@ def create_local_stream_ticket(file_path: Path, client_ip: str) -> dict:
         "video_codec": probe.get("video_codec", ""),
         "video_pix_fmt": probe.get("video_pix_fmt", ""),
         "audio_codec": probe.get("audio_codec", ""),
+        "audio_tracks": probe.get("audio_tracks", []),
         "subtitles": subtitles,
+        "subtitle_cache": {},
         "hls_session": None,
     }
 
     public_subtitles = [
-        {"index": idx, "label": sub["label"], "source": sub["source"]}
+        {
+            "index": idx,
+            "label": sub["label"],
+            "source": sub["source"],
+            "render_mode": sub.get("render_mode", "text"),
+        }
         for idx, sub in enumerate(subtitles)
+    ]
+
+    public_audio_tracks = [
+        {"index": idx, "label": track["label"], "codec": track["codec"]}
+        for idx, track in enumerate(probe.get("audio_tracks", []))
     ]
 
     return {
@@ -472,6 +567,7 @@ def create_local_stream_ticket(file_path: Path, client_ip: str) -> dict:
         "duration": probe.get("duration", 0.0),
         "ffmpeg_available": bool(get_ffmpeg_binary()),
         "subtitles": public_subtitles,
+        "audio_tracks": public_audio_tracks,
     }
 
 
@@ -488,6 +584,29 @@ def _can_copy_video_for_mobile(ticket_data: dict) -> bool:
     vcodec = ticket_data.get("video_codec", "")
     pix_fmt = ticket_data.get("video_pix_fmt", "")
     return vcodec == "h264" and pix_fmt in ("", "yuv420p")
+
+
+def get_burn_subtitle_stream_index(ticket_data: dict, track_index: int) -> Optional[int]:
+    """Returns the FFmpeg stream index if the requested subtitle track is image-based (PGS/VobSub)."""
+    if track_index < 0:
+        return None
+    subtitles = ticket_data.get("subtitles") or []
+    if track_index >= len(subtitles):
+        return None
+    track = subtitles[track_index]
+    if track.get("render_mode") == "burn" and "stream_index" in track:
+        return int(track["stream_index"])
+    return None
+
+
+def get_selected_audio_track(ticket_data: dict, audio_track_index: int) -> Optional[dict]:
+    """Returns the probed audio stream metadata for the requested audio track index."""
+    audio_tracks = ticket_data.get("audio_tracks") or []
+    if not audio_tracks:
+        return None
+    if 0 <= audio_track_index < len(audio_tracks):
+        return audio_tracks[audio_track_index]
+    return audio_tracks[0]
 
 
 def stop_hls_session(ticket_data: dict):
@@ -512,8 +631,13 @@ def stop_hls_session(ticket_data: dict):
         shutil.rmtree(hls_dir, ignore_errors=True)
 
 
-def start_hls_session(ticket_data: dict, start_seconds: float = 0.0) -> Optional[str]:
-    """Starts an on-the-fly FFmpeg HLS stream for mobile/desktop Firefox & iOS and returns session_id."""
+def start_hls_session(
+    ticket_data: dict,
+    start_seconds: float = 0.0,
+    burn_sub_stream: Optional[int] = None,
+    audio_track_index: int = 0,
+) -> Optional[str]:
+    """Starts an on-the-fly FFmpeg HLS stream (with optional PGS/VobSub burn-in & audio track selection)."""
     ffmpeg_bin = get_ffmpeg_binary()
     if not ffmpeg_bin:
         return None
@@ -527,18 +651,34 @@ def start_hls_session(ticket_data: dict, start_seconds: float = 0.0) -> Optional
     cmd = [ffmpeg_bin, "-v", "error"]
     if start_seconds > 0:
         cmd.extend(["-ss", f"{start_seconds:.3f}"])
-    cmd.extend(["-i", ticket_data["path"], "-map", "0:v:0", "-map", "0:a:0?"])
+    cmd.extend(["-i", ticket_data["path"]])
 
-    if _can_copy_video_for_mobile(ticket_data):
-        cmd.extend(["-c:v", "copy", "-bsf:v", "h264_mp4toannexb"])
-    else:
+    selected_audio = get_selected_audio_track(ticket_data, audio_track_index)
+    audio_map = f"0:{selected_audio['stream_index']}" if selected_audio else "0:a:0?"
+    audio_codec = selected_audio["codec"] if selected_audio else ticket_data.get("audio_codec", "")
+
+    if burn_sub_stream is not None:
         cmd.extend([
+            "-filter_complex",
+            f"[0:{burn_sub_stream}][0:v:0]scale2ref[sub][vid];[vid][sub]overlay=eof_action=pass[v]",
+            "-map", "[v]",
+            "-map", audio_map,
             "-c:v", "libx264", "-preset", "veryfast", "-crf", "22",
             "-profile:v", "main", "-level", "4.1", "-pix_fmt", "yuv420p",
             "-g", "48", "-keyint_min", "48", "-sc_threshold", "0",
         ])
+    else:
+        cmd.extend(["-map", "0:v:0", "-map", audio_map])
+        if _can_copy_video_for_mobile(ticket_data):
+            cmd.extend(["-c:v", "copy", "-bsf:v", "h264_mp4toannexb"])
+        else:
+            cmd.extend([
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", "22",
+                "-profile:v", "main", "-level", "4.1", "-pix_fmt", "yuv420p",
+                "-g", "48", "-keyint_min", "48", "-sc_threshold", "0",
+            ])
 
-    if ticket_data.get("audio_codec") == "aac":
+    if audio_codec == "aac":
         cmd.extend(["-c:a", "copy"])
     else:
         cmd.extend(["-c:a", "aac", "-ac", "2", "-ar", "48000", "-b:a", "192k"])
@@ -596,27 +736,48 @@ def get_hls_file_path(ticket_data: dict, session_id: str, filename: str) -> Opti
     return candidate if candidate.is_file() else None
 
 
-def stream_transcoded_video(ticket_data: dict, start_seconds: float = 0.0):
+def stream_transcoded_video(
+    ticket_data: dict,
+    start_seconds: float = 0.0,
+    burn_sub_stream: Optional[int] = None,
+    audio_track_index: int = 0,
+):
     """Fallback fragmented MP4 stream if hls.js is unavailable offline."""
     ffmpeg_bin = get_ffmpeg_binary()
     if not ffmpeg_bin:
         return
 
+    selected_audio = get_selected_audio_track(ticket_data, audio_track_index)
+    audio_map = f"0:{selected_audio['stream_index']}" if selected_audio else "0:a:0?"
+    audio_codec = selected_audio["codec"] if selected_audio else ticket_data.get("audio_codec", "")
+
     cmd = [ffmpeg_bin, "-v", "error"]
     if start_seconds > 0:
         cmd.extend(["-ss", f"{start_seconds:.3f}"])
-    cmd.extend(["-i", ticket_data["path"], "-map", "0:v:0", "-map", "0:a:0?"])
+    cmd.extend(["-i", ticket_data["path"]])
 
-    if _can_copy_video_for_mobile(ticket_data):
-        cmd.extend(["-c:v", "copy"])
-    else:
+    if burn_sub_stream is not None:
         cmd.extend([
+            "-filter_complex",
+            f"[0:{burn_sub_stream}][0:v:0]scale2ref[sub][vid];[vid][sub]overlay=eof_action=pass[v]",
+            "-map", "[v]",
+            "-map", audio_map,
             "-c:v", "libx264", "-preset", "veryfast", "-crf", "22",
             "-profile:v", "main", "-level", "4.1", "-pix_fmt", "yuv420p",
             "-g", "48",
         ])
+    else:
+        cmd.extend(["-map", "0:v:0", "-map", audio_map])
+        if _can_copy_video_for_mobile(ticket_data):
+            cmd.extend(["-c:v", "copy"])
+        else:
+            cmd.extend([
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", "22",
+                "-profile:v", "main", "-level", "4.1", "-pix_fmt", "yuv420p",
+                "-g", "48",
+            ])
 
-    if ticket_data.get("audio_codec") in {"aac", "mp3"}:
+    if audio_codec in {"aac", "mp3"}:
         cmd.extend(["-c:a", "copy"])
     else:
         cmd.extend(["-c:a", "aac", "-ac", "2", "-ar", "48000", "-b:a", "192k"])
@@ -727,32 +888,39 @@ def render_subtitle_track_vtt(
         return convert_srt_or_vtt_to_vtt(raw_text, offset_seconds=offset_seconds)
 
     if track["source"] == "embedded":
-        ffmpeg_bin = get_ffmpeg_binary()
-        if not ffmpeg_bin:
-            return None
-        proc = subprocess.run(
-            [
-                ffmpeg_bin,
-                "-v",
-                "error",
-                "-i",
-                ticket_data["path"],
-                "-map",
-                f"0:{track['stream_index']}",
-                "-f",
-                "webvtt",
-                "pipe:1",
-            ],
-            capture_output=True,
-            timeout=30,
-            creationflags=_NO_WINDOW_FLAG,
-        )
-        if proc.returncode != 0:
-            return None
-        raw_text = proc.stdout.decode("utf-8", errors="replace")
-        return convert_srt_or_vtt_to_vtt(raw_text, offset_seconds=offset_seconds)
+        stream_idx = track["stream_index"]
+        cache = ticket_data.setdefault("subtitle_cache", {})
+        raw_text = cache.get(stream_idx)
 
-    return None
+        if raw_text is None:
+            ffmpeg_bin = get_ffmpeg_binary()
+            if not ffmpeg_bin:
+                return None
+            proc = subprocess.run(
+                [
+                    ffmpeg_bin,
+                    "-v",
+                    "error",
+                    "-i",
+                    ticket_data["path"],
+                    "-map",
+                    f"0:{stream_idx}",
+                    "-c:s",
+                    "webvtt",
+                    "-f",
+                    "webvtt",
+                    "pipe:1",
+                ],
+                capture_output=True,
+                timeout=120,
+                creationflags=_NO_WINDOW_FLAG,
+            )
+            if proc.returncode != 0:
+                return None
+            raw_text = proc.stdout.decode("utf-8", errors="replace")
+            cache[stream_idx] = raw_text
+
+        return convert_srt_or_vtt_to_vtt(raw_text, offset_seconds=offset_seconds)
 
 
 def stream_remote_file(url: str):

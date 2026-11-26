@@ -22,16 +22,27 @@ import {
     handleToggleHideMovie,
     openVideoPlayerForCurrentMovie,
     closeVideoPlayerModal,
-    handleSubtitleSelectionChange,
     handleManualSrtUpload,
     handleVideoLoadedMetadata,
     handleVideoTimeUpdate,
+    handleVideoPause,
+    handleVideoEnded,
+    handleStartOverClick,
+    savePlaybackProgressOnExit,
     handleVideoSeekInput,
     handleVideoSeekCommit,
+    handleVideoSurfaceClick,
     toggleVideoPlayPause,
     toggleVideoMute,
     toggleVideoFullscreen,
-    syncVideoControlIcons
+    toggleVideoTracksMenu,
+    closeVideoTracksMenu,
+    isTracksMenuOpen,
+    syncVideoControlIcons,
+    handleVideoPlayerKeydown,
+    showFullscreenControls,
+    handleFullscreenChange,
+    setControlsHoverState
 } from './movie.js';
 import {
     performTmdbSearch,
@@ -157,30 +168,55 @@ modalCloseBindings.forEach(({ modal, closeBtns }) => {
 
 dom.closeVideoPlayerBtn?.addEventListener('click', closeVideoPlayerModal);
 dom.videoPlayerModal?.addEventListener('click', (event) => {
-    if (event.target === dom.videoPlayerModal) closeVideoPlayerModal();
+    if (event.target === dom.videoPlayerModal) {
+        closeVideoPlayerModal();
+        return;
+    }
+    if (
+        isTracksMenuOpen() &&
+        !dom.videoTracksMenu?.contains(event.target) &&
+        !dom.videoTracksBtn?.contains(event.target)
+    ) {
+        closeVideoTracksMenu();
+    }
 });
-dom.videoSubtitleSelect?.addEventListener('change', handleSubtitleSelectionChange);
-dom.loadSrtBtn?.addEventListener('click', () => dom.srtFileInput?.click());
 dom.srtFileInput?.addEventListener('change', handleManualSrtUpload);
-dom.localVideoPlayer?.addEventListener('click', toggleVideoPlayPause);
+dom.localVideoPlayer?.addEventListener('click', handleVideoSurfaceClick);
 dom.localVideoPlayer?.addEventListener('loadedmetadata', handleVideoLoadedMetadata);
 dom.localVideoPlayer?.addEventListener('timeupdate', handleVideoTimeUpdate);
 dom.localVideoPlayer?.addEventListener('play', syncVideoControlIcons);
-dom.localVideoPlayer?.addEventListener('pause', syncVideoControlIcons);
+dom.localVideoPlayer?.addEventListener('pause', handleVideoPause);
+dom.localVideoPlayer?.addEventListener('ended', handleVideoEnded);
 dom.localVideoPlayer?.addEventListener('volumechange', syncVideoControlIcons);
+dom.videoStartOverBtn?.addEventListener('click', handleStartOverClick);
+window.addEventListener('pagehide', savePlaybackProgressOnExit);
 dom.videoPlayPauseBtn?.addEventListener('click', toggleVideoPlayPause);
 dom.videoSeekSlider?.addEventListener('input', handleVideoSeekInput);
 dom.videoSeekSlider?.addEventListener('change', handleVideoSeekCommit);
+dom.videoTracksBtn?.addEventListener('click', toggleVideoTracksMenu);
 dom.videoMuteBtn?.addEventListener('click', toggleVideoMute);
 dom.videoFullscreenBtn?.addEventListener('click', toggleVideoFullscreen);
+dom.videoPlayerStage?.addEventListener('mousemove', showFullscreenControls);
+dom.videoPlayerStage?.addEventListener('touchstart', showFullscreenControls, { passive: true });
+dom.videoCustomControls?.addEventListener('mouseenter', () => setControlsHoverState(true));
+dom.videoCustomControls?.addEventListener('mouseleave', () => setControlsHoverState(false));
+dom.videoTracksMenu?.addEventListener('mouseenter', () => setControlsHoverState(true));
+dom.videoTracksMenu?.addEventListener('mouseleave', () => setControlsHoverState(false));
+document.addEventListener('fullscreenchange', handleFullscreenChange);
+document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
 document.addEventListener('keydown', (event) => {
-    if (
-        event.key === 'Escape' &&
-        dom.videoPlayerModal &&
-        !dom.videoPlayerModal.classList.contains('hidden')
-    ) {
+    if (!dom.videoPlayerModal || dom.videoPlayerModal.classList.contains('hidden')) return;
+
+    if (event.key === 'Escape') {
+        if (isTracksMenuOpen()) {
+            closeVideoTracksMenu();
+            return;
+        }
         closeVideoPlayerModal();
+        return;
     }
+
+    handleVideoPlayerKeydown(event);
 });
 
 // --- 7. Shared Search & TMDB Search Listeners ---

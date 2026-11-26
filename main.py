@@ -12,6 +12,7 @@ from backend.downloads import (
     create_local_file_ticket,
     create_local_stream_ticket,
     extract_movie_links,
+    get_burn_subtitle_stream_index,
     get_hls_file_path,
     get_local_stream_ticket,
     movie_in_collection,
@@ -381,15 +382,28 @@ def request_local_stream_ticket(payload: LocalFileDownloadRequest, request: Requ
 
 
 @app.get("/api/local-files/stream")
-def stream_local_file(ticket: str, request: Request, start: float = 0.0):
+def stream_local_file(
+    ticket: str,
+    request: Request,
+    start: float = 0.0,
+    burn_sub: int = -1,
+    audio_track: int = 0,
+):
     """Streams a local video inline (direct FileResponse or FFmpeg fragmented MP4 for MKV)."""
     ticket_data = get_local_stream_ticket(ticket, get_client_ip(request))
     if not ticket_data:
         raise HTTPException(status_code=403, detail="Invalid or expired stream ticket")
 
-    if ticket_data.get("mode") == "ffmpeg":
+    burn_stream = get_burn_subtitle_stream_index(ticket_data, burn_sub)
+    safe_audio = max(0, audio_track)
+    if ticket_data.get("mode") == "ffmpeg" or burn_stream is not None or safe_audio > 0:
         return StreamingResponse(
-            stream_transcoded_video(ticket_data, start_seconds=max(0.0, start)),
+            stream_transcoded_video(
+                ticket_data,
+                start_seconds=max(0.0, start),
+                burn_sub_stream=burn_stream,
+                audio_track_index=safe_audio,
+            ),
             media_type="video/mp4",
         )
 
@@ -427,13 +441,25 @@ def serve_movie_url(movie_id: int):
 
 
 @app.post("/api/local-files/hls-start")
-def start_local_hls_stream(ticket: str, request: Request, start: float = 0.0):
+def start_local_hls_stream(
+    ticket: str,
+    request: Request,
+    start: float = 0.0,
+    burn_sub: int = -1,
+    audio_track: int = 0,
+):
     """Starts (or seeks) an FFmpeg HLS session for universal mobile/desktop Firefox playback."""
     ticket_data = get_local_stream_ticket(ticket, get_client_ip(request))
     if not ticket_data:
         raise HTTPException(status_code=403, detail="Invalid or expired stream ticket")
 
-    session_id = start_hls_session(ticket_data, start_seconds=max(0.0, start))
+    burn_stream = get_burn_subtitle_stream_index(ticket_data, burn_sub)
+    session_id = start_hls_session(
+        ticket_data,
+        start_seconds=max(0.0, start),
+        burn_sub_stream=burn_stream,
+        audio_track_index=max(0, audio_track),
+    )
     if not session_id:
         raise HTTPException(
             status_code=500,

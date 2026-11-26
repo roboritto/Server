@@ -44,6 +44,7 @@ class CustomMovieCreate(BaseModel):
     directors: List[Any] = []
     cast: List[Any] = []
 
+
 class LocalFileDownloadRequest(BaseModel):
     movie_id: str
     path: str

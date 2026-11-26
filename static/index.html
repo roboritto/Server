@@ -475,16 +475,29 @@
                 <div id="video-player-header">
                     <h2 id="video-player-title" class="modal-title">Now Playing</h2>
                     <div id="video-player-sources" class="hidden"></div>
-                    <div id="video-player-sub-controls">
-                        <select id="video-subtitle-select" aria-label="Subtitles">
-                            <option value="">Subtitles: Off</option>
-                        </select>
-                        <button id="load-srt-btn" type="button" title="Load a local .srt or .vtt subtitle file">Load .srt</button>
-                        <input type="file" id="srt-file-input" class="hidden" accept=".srt,.vtt">
-                    </div>
                 </div>
                 <div id="video-player-stage">
                     <video id="local-video-player" playsinline preload="metadata"></video>
+
+                    <!-- Resume Toast Banner (Auto-hides after a few seconds) -->
+                    <div id="video-resume-banner" class="hidden" role="status" aria-live="polite">
+                        <span id="video-resume-text">Resumed from 0:00</span>
+                        <button id="video-start-over-btn" type="button">Start Over</button>
+                    </div>
+
+                    <!-- Unified Subtitles & Audio Chooser (Works in both Windowed & Fullscreen) -->
+                    <div id="video-tracks-menu" class="hidden" role="menu" aria-label="Subtitles and Audio">
+                        <div class="video-tracks-section">
+                            <div class="video-tracks-heading">Subtitles</div>
+                            <div id="video-subtitle-list" class="video-tracks-list"></div>
+                        </div>
+                        <div id="video-audio-section" class="video-tracks-section hidden">
+                            <div class="video-tracks-heading">Audio</div>
+                            <div id="video-audio-list" class="video-tracks-list"></div>
+                        </div>
+                        <input type="file" id="srt-file-input" class="hidden" accept=".srt,.vtt">
+                    </div>
+
                     <div id="video-custom-controls">
                         <button id="video-play-pause-btn" class="video-ctrl-btn" type="button" title="Play / Pause" aria-label="Play or Pause">
                             <svg viewBox="0 0 24 24" fill="currentColor" stroke="none">
@@ -494,6 +507,15 @@
                         <span id="video-current-time" class="video-time-label">0:00</span>
                         <input type="range" id="video-seek-slider" min="0" max="0" value="0" step="1" aria-label="Seek video">
                         <span id="video-total-duration" class="video-time-label">0:00</span>
+                        <button id="video-tracks-btn" class="video-ctrl-btn" type="button" title="Subtitles & Audio" aria-label="Subtitles and Audio" aria-expanded="false">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="2" y="4" width="20" height="16" rx="2"></rect>
+                                <path d="M7 15h4"></path>
+                                <path d="M15 15h2"></path>
+                                <path d="M7 11h2"></path>
+                                <path d="M13 11h4"></path>
+                            </svg>
+                        </button>
                         <button id="video-mute-btn" class="video-ctrl-btn" type="button" title="Mute / Unmute" aria-label="Mute or Unmute">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                 <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
@@ -510,11 +532,6 @@
                             </svg>
                         </button>
                     </div>
-                </div>
-                <div id="video-ffmpeg-seek-row" class="hidden">
-                    <span id="video-ffmpeg-current-time">0:00</span>
-                    <input type="range" id="video-ffmpeg-seek-slider" min="0" max="0" value="0" step="1" aria-label="Seek video">
-                    <span id="video-ffmpeg-duration">0:00</span>
                 </div>
                 <p id="video-player-error" class="hidden"></p>
             </div>

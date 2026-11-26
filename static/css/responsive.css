@@ -115,14 +115,10 @@
         padding: 1rem;
     }
 
-    #video-player-sub-controls {
-        margin-left: 0;
-        width: 100%;
-    }
-
-    #video-subtitle-select {
-        flex: 1;
-        max-width: none;
+    #video-tracks-menu {
+        right: 0.5rem;
+        bottom: 52px;
+        width: 220px;
     }
 
     #local-video-player {
