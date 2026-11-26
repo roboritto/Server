@@ -17,9 +17,8 @@ import {
     clearAllCatalogFilters
 } from './home.js';
 import { updateRatedFilterHeartsUI, renderRatedMoviesPage } from './rated.js';
+import { openRandomMoviePage, handleToggleHideMovie } from './movie.js';
 import {
-    openRandomMoviePage,
-    handleToggleHideMovie,
     openVideoPlayerForCurrentMovie,
     closeVideoPlayerModal,
     handleManualSrtUpload,
@@ -43,7 +42,7 @@ import {
     showFullscreenControls,
     handleFullscreenChange,
     setControlsHoverState
-} from './movie.js';
+} from './player.js';
 import {
     performTmdbSearch,
     updateModalHeartsUI,

@@ -1,0 +1,392 @@
+/* --- Popup 3: Rating & Review Modal --- */
+.rating-modal-box {
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    max-width: 480px;
+    text-align: center;
+    padding: 1.75rem;
+}
+
+#rating-form {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+    width: 100%;
+}
+
+#rating-hearts-selector {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.6rem;
+    margin-top: 0.25rem;
+    user-select: none;
+}
+
+.interactive-heart {
+    width: 44px;
+    height: 44px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.15s ease;
+}
+
+.interactive-heart:hover {
+    transform: scale(1.12);
+}
+
+.interactive-heart svg {
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}
+
+#rating-value-display {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-muted);
+}
+
+#review-textarea {
+    width: 100%;
+    padding: 0.85rem 1rem;
+    border-radius: 0.65rem;
+    border: 1px solid var(--border-color);
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: 1rem;
+    line-height: 1.5;
+    resize: vertical;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+#review-textarea:focus {
+    border-color: var(--accent-blue);
+}
+
+#rating-modal-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.75rem;
+    width: 100%;
+    margin-top: 0.25rem;
+}
+
+#clear-rating-btn {
+    padding: 0.7rem 1rem;
+    border: 1px solid var(--border-color);
+    border-radius: 0.5rem;
+    background-color: transparent;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s, color 0.2s;
+}
+
+#clear-rating-btn:hover {
+    background-color: var(--bg-surface-hover);
+    color: var(--text-primary);
+}
+
+#save-rating-btn {
+    flex: 1;
+    padding: 0.75rem 1.25rem;
+    border: none;
+    border-radius: 0.5rem;
+    background-color: var(--accent-blue);
+    color: var(--text-white);
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+#save-rating-btn:hover {
+    background-color: var(--accent-blue-hover);
+}
+
+#save-rating-btn:disabled {
+    background-color: var(--btn-disabled);
+    cursor: not-allowed;
+}
+
+/* --- Popup 4: Add to Collection Modal --- */
+.collection-modal-box {
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    max-width: 460px;
+    max-height: 80vh;
+    text-align: left;
+    padding: 1.75rem;
+}
+
+#collection-search-form {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    width: 100%;
+    margin-bottom: 1rem;
+}
+
+#collection-search-input {
+    flex: 1;
+    padding: 0.75rem 1rem;
+    border-radius: 0.5rem;
+    border: 1px solid var(--border-color);
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: 0.95rem;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+#collection-search-input:focus {
+    border-color: var(--accent-blue);
+}
+
+#add-new-collection-btn {
+    padding: 0.75rem 1.15rem;
+    border: none;
+    border-radius: 0.5rem;
+    background-color: var(--accent-blue);
+    color: var(--text-white);
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    flex-shrink: 0;
+}
+
+#add-new-collection-btn:hover {
+    background-color: var(--accent-blue-hover);
+}
+
+#add-new-collection-btn:disabled {
+    background-color: var(--btn-disabled);
+    cursor: not-allowed;
+}
+
+#collection-list-container {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    overflow-y: auto;
+    max-height: 50vh;
+    padding-right: 0.25rem;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-color) transparent;
+}
+
+.collection-option-item {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    padding: 0.7rem 0.85rem;
+    border-radius: 0.5rem;
+    background-color: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.15s, border-color 0.15s;
+}
+
+.collection-option-item:hover {
+    background-color: var(--bg-surface-hover);
+}
+
+.collection-option-item.selected {
+    border-color: var(--accent-blue);
+    background-color: rgba(59, 130, 246, 0.12);
+}
+
+.collection-checkmark-box {
+    width: 22px;
+    height: 22px;
+    border-radius: 0.35rem;
+    border: 2px solid var(--border-hover);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    color: transparent;
+    transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.collection-option-item.selected .collection-checkmark-box {
+    background-color: var(--accent-blue);
+    border-color: var(--accent-blue);
+    color: var(--text-white);
+}
+
+.collection-checkmark-box svg {
+    width: 14px;
+    height: 14px;
+}
+
+.collection-option-name {
+    font-size: 0.95rem;
+    font-weight: 500;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* --- Popup 5: Download Links Modal --- */
+.download-modal-box {
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    max-width: 420px;
+    min-height: auto;
+    padding: 1.75rem;
+}
+
+#download-modal-links {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    width: 100%;
+    margin-top: 0.5rem;
+}
+
+/* --- Popup 6: Confirm Remove Movie Modal --- */
+.delete-modal-box {
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    max-width: 420px;
+    min-height: auto;
+    padding: 1.75rem;
+    text-align: center;
+}
+
+#delete-movie-confirm-text {
+    font-size: 1rem;
+    line-height: 1.5;
+    color: var(--text-secondary);
+    margin-bottom: 0.45rem;
+}
+
+#delete-movie-target-title {
+    color: var(--text-white);
+}
+
+.delete-movie-subtext {
+    font-size: 0.85rem;
+    line-height: 1.45;
+    color: var(--text-muted);
+    margin-bottom: 1.5rem;
+}
+
+#delete-modal-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    width: 100%;
+}
+
+#cancel-delete-movie-btn {
+    flex: 1;
+    padding: 0.7rem 1rem;
+    border: 1px solid var(--border-color);
+    border-radius: 0.5rem;
+    background-color: transparent;
+    color: var(--text-light);
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s, color 0.2s;
+}
+
+#cancel-delete-movie-btn:hover:not(:disabled) {
+    background-color: var(--bg-surface-hover);
+    color: var(--text-primary);
+}
+
+#confirm-delete-movie-btn {
+    flex: 1;
+    padding: 0.7rem 1rem;
+    border: none;
+    border-radius: 0.5rem;
+    background-color: var(--accent-red);
+    color: var(--text-white);
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+#confirm-delete-movie-btn:hover:not(:disabled) {
+    background-color: var(--accent-red-hover);
+}
+
+#cancel-delete-movie-btn:disabled,
+#confirm-delete-movie-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* --- Popup 7: Add Download Link Modal --- */
+.add-link-modal-box {
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    max-width: 460px;
+    min-height: auto;
+    text-align: left;
+    padding: 1.75rem;
+}
+
+#add-link-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+    width: 100%;
+}
+
+#add-link-input {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    border-radius: 0.5rem;
+    border: 1px solid var(--border-color);
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: 0.95rem;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+#add-link-input:focus {
+    border-color: var(--accent-blue);
+}
+
+#save-add-link-btn {
+    width: 100%;
+    padding: 0.75rem 1.25rem;
+    border: none;
+    border-radius: 0.5rem;
+    background-color: var(--accent-blue);
+    color: var(--text-white);
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+#save-add-link-btn:hover:not(:disabled) {
+    background-color: var(--accent-blue-hover);
+}
+
+#save-add-link-btn:disabled {
+    background-color: var(--btn-disabled);
+    cursor: not-allowed;
+}
