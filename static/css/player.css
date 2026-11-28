@@ -14,9 +14,9 @@
     display: flex;
     align-items: center;
     flex-wrap: wrap;
-    gap: 0.75rem;
+    gap: 0.7rem;
     padding-right: 2.25rem;
-    margin-bottom: 0.9rem;
+    margin-bottom: 0.75rem;
 }
 
 #video-player-title {
@@ -53,15 +53,124 @@
     color: var(--text-white);
 }
 
-/* --- Stage, Video & Fullscreen Layout --- */
+/* --- Mobile OS (iOS / Android) Header Tools --- */
+#video-mobile-tools {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    margin-left: auto;
+}
+
+.video-tool-select {
+    padding: 0.32rem 0.6rem;
+    border-radius: 0.45rem;
+    border: 1px solid var(--border-color);
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: 0.82rem;
+    outline: none;
+    max-width: 210px;
+}
+
+.video-tool-select:focus {
+    border-color: var(--accent-blue);
+}
+
+#load-srt-btn {
+    padding: 0.32rem 0.7rem;
+    border-radius: 0.45rem;
+    border: 1px solid var(--border-color);
+    background-color: var(--bg-surface);
+    color: var(--text-primary);
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background-color 0.15s, border-color 0.15s;
+}
+
+#load-srt-btn:hover {
+    background-color: var(--bg-surface-hover);
+    border-color: var(--border-hover);
+}
+
+/* --- Resume Banner (Above Video Stage — Never Overlaps Seek Bar) --- */
+#video-resume-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.5rem 0.85rem;
+    margin-bottom: 0.75rem;
+    border-radius: 0.5rem;
+    border: 1px solid rgba(56, 189, 248, 0.3);
+    background-color: rgba(15, 23, 42, 0.92);
+    font-size: 0.85rem;
+    color: var(--text-primary);
+}
+
+#video-start-over-btn {
+    padding: 0.28rem 0.7rem;
+    border-radius: 0.35rem;
+    border: 1px solid rgba(56, 189, 248, 0.45);
+    background-color: rgba(56, 189, 248, 0.14);
+    color: var(--accent-sky);
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+}
+
+#video-start-over-btn:hover {
+    background-color: var(--accent-blue);
+    border-color: var(--accent-blue);
+    color: var(--text-white);
+}
+
+/* --- Stage, Video & Desktop Fullscreen Layout --- */
 #video-player-stage {
     position: relative;
     width: 100%;
+    min-height: 220px;
     background-color: var(--bg-black);
     border-radius: 0.5rem;
     overflow: hidden;
     display: flex;
     flex-direction: column;
+    justify-content: center;
+}
+
+#video-viewport {
+    position: relative;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: var(--bg-black);
+    overflow: hidden;
+}
+
+#video-player-stage:fullscreen #video-viewport,
+#video-player-stage:-webkit-full-screen #video-viewport {
+    width: 100%;
+    height: 100%;
+    flex: 1;
+}
+
+#video-pgs-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    pointer-events: none;
+    z-index: 2;
+}
+
+#video-player-modal.native-mobile-player #video-pgs-canvas {
+    display: none !important;
 }
 
 #video-player-stage:fullscreen,
@@ -94,44 +203,91 @@
     object-fit: contain;
 }
 
-/* --- Resume Toast Banner (Windowed + Fullscreen) --- */
-#video-resume-banner {
+/* --- Preparation Progress Overlay --- */
+#video-prepare-overlay {
     position: absolute;
-    top: 0.85rem;
-    left: 0.85rem;
-    z-index: 10;
+    inset: 0;
+    z-index: 8;
     display: flex;
+    flex-direction: column;
     align-items: center;
-    gap: 0.7rem;
-    padding: 0.45rem 0.75rem;
-    border-radius: 0.5rem;
-    border: 1px solid rgba(148, 163, 184, 0.24);
-    background-color: rgba(15, 23, 42, 0.9);
-    backdrop-filter: blur(10px);
-    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.55);
-    font-size: 0.84rem;
-    color: var(--text-primary);
+    justify-content: center;
+    gap: 0.75rem;
+    padding: 1.5rem;
+    background-color: rgba(2, 6, 23, 0.9);
+    text-align: center;
 }
 
-#video-start-over-btn {
-    padding: 0.25rem 0.6rem;
-    border-radius: 0.35rem;
-    border: 1px solid rgba(56, 189, 248, 0.45);
-    background-color: rgba(56, 189, 248, 0.14);
-    color: var(--accent-sky);
+.video-prepare-spinner {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    border: 3px solid rgba(148, 163, 184, 0.25);
+    border-top-color: var(--accent-blue);
+    animation: video-prep-spin 0.85s linear infinite;
+}
+
+@keyframes video-prep-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+#video-prepare-status {
+    font-size: 0.92rem;
+    color: var(--text-primary);
+    margin: 0;
+}
+
+.video-prepare-bar {
+    width: min(320px, 85%);
+    height: 7px;
+    border-radius: 999px;
+    background-color: rgba(148, 163, 184, 0.22);
+    overflow: hidden;
+}
+
+#video-prepare-bar-fill {
+    width: 0%;
+    height: 100%;
+    background-color: var(--accent-blue);
+    transition: width 0.25s ease;
+}
+
+#video-prepare-percent {
+    font-size: 0.82rem;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-secondary);
+}
+
+#video-prepare-hint {
+    max-width: 340px;
     font-size: 0.78rem;
+    line-height: 1.4;
+    color: var(--text-muted);
+    margin: 0;
+}
+
+#video-prepare-cancel-btn {
+    margin-top: 0.2rem;
+    padding: 0.35rem 0.85rem;
+    border-radius: 0.45rem;
+    border: 1px solid rgba(239, 68, 68, 0.45);
+    background-color: rgba(239, 68, 68, 0.14);
+    color: #fca5a5;
+    font-size: 0.8rem;
     font-weight: 600;
     cursor: pointer;
-    transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+    transition: background-color 0.15s, border-color 0.15s, color 0.15s;
 }
 
-#video-start-over-btn:hover {
-    background-color: var(--accent-blue);
-    border-color: var(--accent-blue);
+#video-prepare-cancel-btn:hover {
+    background-color: var(--accent-red);
+    border-color: var(--accent-red);
     color: var(--text-white);
 }
 
-/* --- Custom Control Bar --- */
+/* --- Desktop Custom Control Bar --- */
 #video-custom-controls {
     display: flex;
     align-items: center;
@@ -202,10 +358,10 @@
     flex: 1;
     accent-color: var(--accent-blue);
     cursor: pointer;
-    min-width: 60px;
+    min-width: 0;
 }
 
-/* --- Unified Subtitles & Audio Popup Menu (Windowed + Fullscreen) --- */
+/* --- Desktop Unified Subtitles & Audio Popup Menu --- */
 #video-tracks-menu {
     position: absolute;
     right: 0.75rem;
@@ -309,6 +465,16 @@
 
 #video-tracks-btn.active {
     color: var(--accent-sky);
+}
+
+/* --- iOS / Android Native Player Mode Overrides --- */
+#video-player-modal.native-mobile-player #video-custom-controls,
+#video-player-modal.native-mobile-player #video-tracks-menu {
+    display: none !important;
+}
+
+#video-player-modal.native-mobile-player #local-video-player {
+    cursor: default;
 }
 
 #video-player-error {

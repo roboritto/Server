@@ -2,7 +2,6 @@ import { dom } from './dom.js';
 
 export const VIDEO_SEEK_STEP_SECONDS = 10;
 export const FULLSCREEN_CONTROLS_HIDE_MS = 2500;
-export const FFMPEG_KEY_SEEK_DEBOUNCE_MS = 350;
 export const WATCH_PROGRESS_STORAGE_KEY = 'cinema_watch_progress_v1';
 export const RESUME_MIN_SECONDS = 10;
 export const RESUME_COMPLETE_RATIO = 0.95;
@@ -34,15 +33,30 @@ export const PLAYER_VOL_OFF_SVG = `
         <line x1="17" y1="9" x2="23" y2="15"></line>
     </svg>
 `;
+export const PLAYER_FS_ENTER_SVG = `
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="15 3 21 3 21 9"></polyline>
+        <polyline points="9 21 3 21 3 15"></polyline>
+        <line x1="21" y1="3" x2="14" y2="10"></line>
+        <line x1="3" y1="21" x2="10" y2="14"></line>
+    </svg>
+`;
+export const PLAYER_FS_EXIT_SVG = `
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="4 14 10 14 10 20"></polyline>
+        <polyline points="20 10 14 10 14 4"></polyline>
+        <line x1="14" y1="10" x2="21" y2="3"></line>
+        <line x1="3" y1="21" x2="10" y2="14"></line>
+    </svg>
+`;
 
 export const playerState = {
     streamRequestId: 0,
+    useNativePlayer: false,
     movieId: '',
     filePath: '',
     ticket: '',
-    mode: 'direct',
     duration: 0,
-    seekOffset: 0,
     burnSubTrackIndex: -1,
     selectedSubtitleValue: '',
     audioTracks: [],
@@ -54,6 +68,19 @@ export const playerState = {
     serverSubtitles: [],
     manualSubtitles: [] // [{ label, rawText }]
 };
+
+/**
+ * Returns true ONLY on iOS / iPadOS / Android devices.
+ * Resizing a desktop/laptop browser window to a small width still returns false.
+ */
+export function isMobileOsDevice() {
+    const ua = navigator.userAgent || '';
+    if (/Android|iPhone|iPod/i.test(ua)) return true;
+    if (/iPad/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) {
+        return true;
+    }
+    return false;
+}
 
 export function isHttpLink(entry) {
     return /^https?:\/\//i.test((entry || '').trim());
@@ -78,18 +105,9 @@ export function normalizeLocalPathKey(rawPath) {
     return cleaned.replace(/^\/+/, '').toLowerCase();
 }
 
-export function isUsingFfmpegPlayback() {
-    return (
-        playerState.mode === 'ffmpeg' ||
-        playerState.burnSubTrackIndex >= 0 ||
-        playerState.selectedAudioTrackIndex > 0
-    );
-}
-
 export function getCurrentPlaybackSeconds() {
     if (!dom.localVideoPlayer) return 0;
-    const rawTime = dom.localVideoPlayer.currentTime || 0;
-    return isUsingFfmpegPlayback() ? playerState.seekOffset + rawTime : rawTime;
+    return dom.localVideoPlayer.currentTime || 0;
 }
 
 export function syncSeekBarMetrics(currentSec, totalSec) {

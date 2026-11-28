@@ -438,6 +438,7 @@ export async function startBackgroundDatabaseLoad() {
 export function applyPermissionsToUi() {
     const perms = state.permissions;
     dom.hideMovieBtn?.classList.toggle('hidden', !state.isAdmin);
+    dom.navCacheBtn?.classList.toggle('hidden', !state.isAdmin);
     dom.navAddBtn?.classList.toggle('hidden', !perms.add_movie);
     dom.deleteMovieBtn?.classList.toggle('hidden', !perms.delete);
     dom.openAddLinkModalBtn?.classList.toggle('hidden', !perms.add_link);

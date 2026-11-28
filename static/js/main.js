@@ -21,10 +21,14 @@ import { openRandomMoviePage, handleToggleHideMovie } from './movie.js';
 import {
     openVideoPlayerForCurrentMovie,
     closeVideoPlayerModal,
+    handleAudioTrackChange,
+    handleBurnSubChange,
+    handleCancelPrepareClick,
     handleManualSrtUpload,
     handleVideoLoadedMetadata,
     handleVideoTimeUpdate,
     handleVideoPause,
+    handleVideoSeeked,
     handleVideoEnded,
     handleStartOverClick,
     savePlaybackProgressOnExit,
@@ -56,6 +60,13 @@ import {
     openDeleteMovieModal,
     handleDeleteCurrentMovie
 } from './modals.js';
+import {
+    handlePrecacheCurrentMovie,
+    openPrecacheQueueModal,
+    closePrecacheQueueModal,
+    handleQueueAllUncached,
+    handleCancelPrecacheQueue
+} from './precache.js';
 
 // --- 1. Auth Listeners ---
 dom.authForm?.addEventListener('submit', (event) => {
@@ -74,6 +85,7 @@ dom.navRatedBtn?.addEventListener('click', () => navigateToPage('rated-page', do
 dom.navRandomBtn?.addEventListener('click', openRandomMoviePage);
 dom.navSearchBtn?.addEventListener('click', () => openModal(dom.dbSearchModal));
 dom.navAddBtn?.addEventListener('click', () => openModal(dom.tmdbAddModal));
+dom.navCacheBtn?.addEventListener('click', openPrecacheQueueModal);
 
 dom.pageBackBtn?.addEventListener('click', goBackPage);
 
@@ -118,6 +130,7 @@ dom.openDownloadModalBtn?.addEventListener('click', () => openModal(dom.download
 dom.openRatingModalBtn?.addEventListener('click', openRatingModalForCurrentMovie);
 dom.openCollectionModalBtn?.addEventListener('click', openCollectionModalForCurrentMovie);
 dom.openAddLinkModalBtn?.addEventListener('click', openAddLinkModalForCurrentMovie);
+dom.precacheMovieBtn?.addEventListener('click', handlePrecacheCurrentMovie);
 dom.hideMovieBtn?.addEventListener('click', handleToggleHideMovie);
 dom.deleteMovieBtn?.addEventListener('click', openDeleteMovieModal);
 
@@ -166,6 +179,12 @@ modalCloseBindings.forEach(({ modal, closeBtns }) => {
 });
 
 dom.closeVideoPlayerBtn?.addEventListener('click', closeVideoPlayerModal);
+dom.closeCacheQueueBtn?.addEventListener('click', closePrecacheQueueModal);
+dom.cacheQueueModal?.addEventListener('click', (event) => {
+    if (event.target === dom.cacheQueueModal) closePrecacheQueueModal();
+});
+dom.queueAllUncachedBtn?.addEventListener('click', handleQueueAllUncached);
+dom.cancelPrecacheQueueBtn?.addEventListener('click', handleCancelPrecacheQueue);
 dom.videoPlayerModal?.addEventListener('click', (event) => {
     if (event.target === dom.videoPlayerModal) {
         closeVideoPlayerModal();
@@ -179,12 +198,17 @@ dom.videoPlayerModal?.addEventListener('click', (event) => {
         closeVideoTracksMenu();
     }
 });
+dom.videoAudioSelect?.addEventListener('change', handleAudioTrackChange);
+dom.videoBurnSubSelect?.addEventListener('change', handleBurnSubChange);
+dom.videoPrepareCancelBtn?.addEventListener('click', handleCancelPrepareClick);
+dom.loadSrtBtn?.addEventListener('click', () => dom.srtFileInput?.click());
 dom.srtFileInput?.addEventListener('change', handleManualSrtUpload);
 dom.localVideoPlayer?.addEventListener('click', handleVideoSurfaceClick);
 dom.localVideoPlayer?.addEventListener('loadedmetadata', handleVideoLoadedMetadata);
 dom.localVideoPlayer?.addEventListener('timeupdate', handleVideoTimeUpdate);
 dom.localVideoPlayer?.addEventListener('play', syncVideoControlIcons);
 dom.localVideoPlayer?.addEventListener('pause', handleVideoPause);
+dom.localVideoPlayer?.addEventListener('seeked', handleVideoSeeked);
 dom.localVideoPlayer?.addEventListener('ended', handleVideoEnded);
 dom.localVideoPlayer?.addEventListener('volumechange', syncVideoControlIcons);
 dom.videoStartOverBtn?.addEventListener('click', handleStartOverClick);

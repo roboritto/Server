@@ -390,3 +390,181 @@
     background-color: var(--btn-disabled);
     cursor: not-allowed;
 }
+
+/* --- Popup 9: Admin Server Cache Queue Modal --- */
+#nav-cache-btn.has-active-queue {
+    color: var(--accent-sky);
+}
+
+.cache-queue-modal-box {
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    max-width: 520px;
+    max-height: 82vh;
+    min-height: auto;
+    text-align: left;
+    padding: 1.75rem;
+    gap: 0.85rem;
+}
+
+.cache-queue-option {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    cursor: pointer;
+    user-select: none;
+}
+
+.cache-queue-option input {
+    accent-color: var(--accent-blue);
+    cursor: pointer;
+}
+
+.cache-queue-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+}
+
+#queue-all-uncached-btn {
+    flex: 1;
+    padding: 0.7rem 1rem;
+    border: none;
+    border-radius: 0.5rem;
+    background-color: var(--accent-blue);
+    color: var(--text-white);
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+#queue-all-uncached-btn:hover:not(:disabled) {
+    background-color: var(--accent-blue-hover);
+}
+
+#queue-all-uncached-btn:disabled {
+    background-color: var(--btn-disabled);
+    cursor: not-allowed;
+}
+
+#cancel-precache-queue-btn {
+    padding: 0.7rem 1rem;
+    border-radius: 0.5rem;
+    border: 1px solid rgba(239, 68, 68, 0.45);
+    background-color: rgba(239, 68, 68, 0.14);
+    color: var(--accent-red-soft);
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s, border-color 0.2s, color 0.2s;
+}
+
+#cancel-precache-queue-btn:hover:not(:disabled) {
+    background-color: var(--accent-red);
+    border-color: var(--accent-red);
+    color: var(--text-white);
+}
+
+.cache-queue-summary {
+    font-size: 0.84rem;
+    color: var(--text-muted);
+    margin: 0;
+}
+
+.cache-queue-card {
+    padding: 0.85rem 0.95rem;
+    border-radius: 0.55rem;
+    background-color: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+}
+
+.cache-queue-card-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    font-size: 0.92rem;
+    color: var(--text-primary);
+}
+
+.cache-queue-meta {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+}
+
+.cache-queue-bar {
+    width: 100%;
+    height: 6px;
+}
+
+#cache-queue-active-bar-fill {
+    width: 0%;
+    height: 100%;
+    background-color: var(--accent-blue);
+    transition: width 0.25s ease;
+}
+
+.cache-queue-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+.cache-queue-section-label {
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+
+.cache-queue-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    max-height: 170px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-color) transparent;
+}
+
+.cache-queue-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.65rem;
+    padding: 0.5rem 0.7rem;
+    border-radius: 0.45rem;
+    background-color: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    font-size: 0.84rem;
+}
+
+.cache-queue-row-title {
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.cache-queue-row-badge {
+    font-size: 0.74rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+.cache-queue-row-badge.status-cached {
+    color: var(--accent-green-light);
+}
+
+.cache-queue-row-badge.status-error {
+    color: var(--accent-red-soft);
+}

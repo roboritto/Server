@@ -1,3 +1,4 @@
+from pathlib import Path
 from fastapi import FastAPI, Header, HTTPException, Request, Security
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, Response, StreamingResponse
@@ -16,14 +17,19 @@ from backend.downloads import (
     resolve_local_file,
 )
 from backend.streaming import (
+    cancel_precache_queue,
+    cancel_prepare_job,
     create_local_stream_ticket,
-    get_burn_subtitle_stream_index,
-    get_hls_file_path,
+    detach_ticket_from_prepare_jobs,
+    extract_pgs_track_sup,
+    get_cached_mp4_path,
     get_local_stream_ticket,
+    get_movie_precache_status,
+    get_precache_queue_status,
+    get_prepare_job_status,
+    queue_movies_for_precache,
     render_subtitle_track_vtt,
-    start_hls_session,
-    stop_hls_session,
-    stream_transcoded_video,
+    start_prepare_mp4_job,
 )
 from backend.models import (
     CollectionDownloadRequest,
@@ -31,6 +37,7 @@ from backend.models import (
     LocalFileDownloadRequest,
     Movie,
     MovieUpdate,
+    PrecacheQueueRequest,
     TmdbCacheUpdate,
 )
 from backend.storage import (
@@ -384,29 +391,21 @@ def request_local_stream_ticket(payload: LocalFileDownloadRequest, request: Requ
 
 
 @app.get("/api/local-files/stream")
-def stream_local_file(
-    ticket: str,
-    request: Request,
-    start: float = 0.0,
-    burn_sub: int = -1,
-    audio_track: int = 0,
-):
-    """Streams a local video inline (direct FileResponse or FFmpeg fragmented MP4 for MKV)."""
+def stream_local_file(ticket: str, request: Request, cache_key: str = ""):
+    """Streams a native or prepared MP4 inline with full HTTP Range seeking support."""
     ticket_data = get_local_stream_ticket(ticket, get_client_ip(request))
     if not ticket_data:
         raise HTTPException(status_code=403, detail="Invalid or expired stream ticket")
 
-    burn_stream = get_burn_subtitle_stream_index(ticket_data, burn_sub)
-    safe_audio = max(0, audio_track)
-    if ticket_data.get("mode") == "ffmpeg" or burn_stream is not None or safe_audio > 0:
-        return StreamingResponse(
-            stream_transcoded_video(
-                ticket_data,
-                start_seconds=max(0.0, start),
-                burn_sub_stream=burn_stream,
-                audio_track_index=safe_audio,
-            ),
+    if cache_key:
+        cached_path = get_cached_mp4_path(ticket_data, cache_key)
+        if not cached_path:
+            raise HTTPException(status_code=404, detail="Prepared video not found")
+        return FileResponse(
+            path=str(cached_path),
+            filename=f"{Path(ticket_data['filename']).stem}.mp4",
             media_type="video/mp4",
+            content_disposition_type="inline",
         )
 
     return FileResponse(
@@ -432,7 +431,160 @@ def get_local_subtitle_track(
     if vtt_content is None:
         raise HTTPException(status_code=404, detail="Subtitle track not found")
 
-    return Response(content=vtt_content, media_type="text/vtt; charset=utf-8")
+    return Response(
+        content=vtt_content,
+        media_type="text/vtt; charset=utf-8",
+        headers={"Cache-Control": "private, max-age=3600"},
+    )
+
+
+@app.get("/api/local-files/pgs")
+def get_local_pgs_subtitle_track(ticket: str, track: int, request: Request):
+    """Serves an extracted Blu-ray PGS (.sup) track for client-side <canvas> rendering."""
+    ticket_data = get_local_stream_ticket(ticket, get_client_ip(request))
+    if not ticket_data:
+        raise HTTPException(status_code=403, detail="Invalid or expired stream ticket")
+
+    sup_path = extract_pgs_track_sup(ticket_data, track_index=track)
+    if not sup_path:
+        raise HTTPException(status_code=404, detail="PGS subtitle track not found")
+
+    return FileResponse(
+        path=str(sup_path),
+        media_type="application/octet-stream",
+        headers={"Cache-Control": "private, max-age=3600"},
+    )
+
+
+@app.post("/api/local-files/prepare")
+def prepare_local_video_stream(
+    ticket: str,
+    request: Request,
+    audio_track: int = 0,
+    burn_sub: int = -1,
+):
+    """Returns a ready universal MP4 URL immediately or starts/joins a background cache job."""
+    ticket_data = get_local_stream_ticket(ticket, get_client_ip(request))
+    if not ticket_data:
+        raise HTTPException(status_code=403, detail="Invalid or expired stream ticket")
+
+    return start_prepare_mp4_job(
+        ticket=ticket,
+        ticket_data=ticket_data,
+        audio_track_index=audio_track,
+        burn_sub_track=burn_sub,
+    )
+
+
+@app.get("/api/local-files/prepare-status")
+def get_local_video_prepare_status(ticket: str, job_id: str, request: Request):
+    """Polls live progress for a background MP4 preparation job."""
+    ticket_data = get_local_stream_ticket(ticket, get_client_ip(request))
+    if not ticket_data:
+        raise HTTPException(status_code=403, detail="Invalid or expired stream ticket")
+
+    status = get_prepare_job_status(ticket, ticket_data, job_id)
+    if not status:
+        raise HTTPException(status_code=404, detail="Preparation job not found")
+    return status
+
+
+@app.post("/api/local-files/prepare-cancel")
+def cancel_local_video_prepare(ticket: str, job_id: str, request: Request):
+    """Explicitly cancels an in-progress MP4 conversion when the user clicks Cancel."""
+    ticket_data = get_local_stream_ticket(ticket, get_client_ip(request))
+    if not ticket_data:
+        raise HTTPException(status_code=403, detail="Invalid or expired stream ticket")
+
+    cancel_prepare_job(ticket, ticket_data, job_id)
+    return {"status": "ok"}
+
+
+@app.post("/api/local-files/stream-stop")
+def stop_local_video_prepare(ticket: str, request: Request):
+    """Detaches the closed player modal while letting background server caching finish."""
+    ticket_data = get_local_stream_ticket(ticket, get_client_ip(request))
+    if ticket_data:
+        detach_ticket_from_prepare_jobs(ticket_data, ticket=ticket)
+    return {"status": "ok"}
+
+
+# --- Admin Pre-Cache Queue Endpoints ---
+@app.get("/api/admin/precache/status", dependencies=[Security(verify_token)])
+def get_admin_precache_status(request: Request):
+    """Returns current background pre-cache queue status (admin-only)."""
+    if not is_admin_request(request):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return get_precache_queue_status()
+
+
+@app.get("/api/admin/precache/movie-status/{movie_id}", dependencies=[Security(verify_token)])
+def get_admin_movie_precache_status(
+    movie_id: str, request: Request, include_mobile_burn: bool = True
+):
+    """Checks whether a single movie's local video(s) are cached, queued, or uncached."""
+    if not is_admin_request(request):
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    target_id = str(movie_id).strip()
+    movie_row = next(
+        (r for r in read_csv() if str(r.get("movie_id", "")).strip() == target_id),
+        None,
+    )
+    if not movie_row:
+        raise HTTPException(status_code=404, detail="Movie not found")
+
+    return get_movie_precache_status(movie_row, include_mobile_burn=include_mobile_burn)
+
+
+@app.post("/api/admin/precache/movie/{movie_id}", dependencies=[Security(verify_token)])
+def queue_admin_single_movie_precache(
+    movie_id: str, payload: PrecacheQueueRequest, request: Request
+):
+    """Queues uncached local video file(s) for a single movie."""
+    if not is_admin_request(request):
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    target_id = str(movie_id).strip()
+    movie_row = next(
+        (r for r in read_csv() if str(r.get("movie_id", "")).strip() == target_id),
+        None,
+    )
+    if not movie_row:
+        raise HTTPException(status_code=404, detail="Movie not found")
+
+    result = queue_movies_for_precache(
+        [movie_row],
+        titles=payload.titles,
+        include_mobile_burn=payload.include_mobile_burn,
+    )
+    if result.get("status") == "error":
+        raise HTTPException(status_code=400, detail=result.get("error"))
+    return result
+
+
+@app.post("/api/admin/precache/queue-all", dependencies=[Security(verify_token)])
+def queue_admin_all_uncached_movies(payload: PrecacheQueueRequest, request: Request):
+    """Scans all CSV movies and queues every local video that doesn't have a cache yet."""
+    if not is_admin_request(request):
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    result = queue_movies_for_precache(
+        read_csv(),
+        titles=payload.titles,
+        include_mobile_burn=payload.include_mobile_burn,
+    )
+    if result.get("status") == "error":
+        raise HTTPException(status_code=400, detail=result.get("error"))
+    return result
+
+
+@app.post("/api/admin/precache/cancel", dependencies=[Security(verify_token)])
+def cancel_admin_precache_queue(request: Request):
+    """Stops the active pre-cache conversion and clears the remaining queue."""
+    if not is_admin_request(request):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return {"status": "ok", "queue_status": cancel_precache_queue()}
 
 
 # --- Direct Movie URL Deep-Link & Static Web App ---
@@ -440,72 +592,6 @@ def get_local_subtitle_track(
 def serve_movie_url(movie_id: int):
     """Serves index.html for direct movie ID URLs like /1234."""
     return FileResponse("static/index.html")
-
-
-@app.post("/api/local-files/hls-start")
-def start_local_hls_stream(
-    ticket: str,
-    request: Request,
-    start: float = 0.0,
-    burn_sub: int = -1,
-    audio_track: int = 0,
-):
-    """Starts (or seeks) an FFmpeg HLS session for universal mobile/desktop Firefox playback."""
-    ticket_data = get_local_stream_ticket(ticket, get_client_ip(request))
-    if not ticket_data:
-        raise HTTPException(status_code=403, detail="Invalid or expired stream ticket")
-
-    burn_stream = get_burn_subtitle_stream_index(ticket_data, burn_sub)
-    session_id = start_hls_session(
-        ticket_data,
-        start_seconds=max(0.0, start),
-        burn_sub_stream=burn_stream,
-        audio_track_index=max(0, audio_track),
-    )
-    if not session_id:
-        raise HTTPException(
-            status_code=500,
-            detail="FFmpeg could not start HLS stream for this video.",
-        )
-
-    return {
-        "session_id": session_id,
-        "playlist_url": f"/api/local-files/hls/{ticket}/{session_id}/index.m3u8",
-    }
-
-
-@app.get("/api/local-files/hls/{ticket}/{session_id}/{filename}")
-def serve_local_hls_file(ticket: str, session_id: str, filename: str, request: Request):
-    """Serves the live HLS playlist (.m3u8) and video segments (.ts)."""
-    ticket_data = get_local_stream_ticket(ticket, get_client_ip(request))
-    if not ticket_data:
-        raise HTTPException(status_code=403, detail="Invalid or expired stream ticket")
-
-    file_path = get_hls_file_path(ticket_data, session_id, filename)
-    if not file_path:
-        raise HTTPException(status_code=404, detail="HLS segment not found")
-
-    if filename.endswith(".m3u8"):
-        return FileResponse(
-            path=str(file_path),
-            media_type="application/vnd.apple.mpegurl",
-            headers={"Cache-Control": "no-store"},
-        )
-
-    return FileResponse(
-        path=str(file_path),
-        media_type="video/mp2t",
-        headers={"Cache-Control": "no-cache"},
-    )
-
-
-@app.post("/api/local-files/stream-stop")
-def stop_local_hls_stream(ticket: str, request: Request):
-    """Stops the active FFmpeg process and cleans up temp HLS files when closing the player."""
-    ticket_data = get_local_stream_ticket(ticket, get_client_ip(request))
-    if ticket_data:
-        stop_hls_session(ticket_data)
-    return {"status": "ok"}
 
 
 app.mount("/", StaticFiles(directory="static", html=True), name="static")

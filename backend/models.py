@@ -48,3 +48,8 @@ class CustomMovieCreate(BaseModel):
 class LocalFileDownloadRequest(BaseModel):
     movie_id: str
     path: str
+
+
+class PrecacheQueueRequest(BaseModel):
+    titles: Dict[str, str] = {}
+    include_mobile_burn: bool = True

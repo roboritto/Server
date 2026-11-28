@@ -115,6 +115,21 @@
         padding: 1rem;
     }
 
+    #video-mobile-tools {
+        margin-left: 0;
+        width: 100%;
+    }
+
+    .video-tool-select {
+        flex: 1;
+        max-width: none;
+    }
+
+    #video-custom-controls {
+        gap: 0.35rem;
+        padding: 0.45rem 0.55rem;
+    }
+
     #video-tracks-menu {
         right: 0.5rem;
         bottom: 52px;

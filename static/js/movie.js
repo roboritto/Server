@@ -9,6 +9,7 @@ import {
 import { pushCurrentStateToHistory, navigateToPage } from './navigation.js';
 import { openPersonPage } from './person.js';
 import { updatePlayButtonForMovie } from './player.js';
+import { refreshMoviePrecacheButton } from './precache.js';
 
 function renderRatingHearts(ratingValue) {
     if (!dom.movieHearts) return;
@@ -296,6 +297,7 @@ export function openMoviePage(movieId, recordHistory = true) {
     // 6. Download Links & Play Button (Populated inside #download-modal-links)
     const links = parseLinkArray(movie.link);
     updatePlayButtonForMovie(movie);
+    refreshMoviePrecacheButton(movie);
 
     if (dom.downloadModalLinks && dom.openDownloadModalBtn) {
         dom.downloadModalLinks.innerHTML = '';

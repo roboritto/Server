@@ -1,22 +1,22 @@
 import { state } from './state.js';
 import { dom } from './dom.js';
-import { parseLinkArray } from './utils.js';
+import { parseLinkArray, sleep } from './utils.js';
 import { openModal, closeModal } from './navigation.js';
 import {
     VIDEO_SEEK_STEP_SECONDS,
     FULLSCREEN_CONTROLS_HIDE_MS,
-    FFMPEG_KEY_SEEK_DEBOUNCE_MS,
     RESUME_MIN_SECONDS,
     RESUME_COMPLETE_RATIO,
     PLAYER_PLAY_SVG,
     PLAYER_PAUSE_SVG,
     PLAYER_VOL_ON_SVG,
     PLAYER_VOL_OFF_SVG,
+    PLAYER_FS_ENTER_SVG,
+    PLAYER_FS_EXIT_SVG,
     playerState,
+    isMobileOsDevice,
     isHttpLink,
     formatVideoTime,
-    isUsingFfmpegPlayback,
-    getCurrentPlaybackSeconds,
     syncSeekBarMetrics
 } from './player-state.js';
 import {
@@ -35,11 +35,11 @@ import {
     closeVideoTracksMenu,
     toggleVideoTracksMenu,
     renderVideoTracksMenu,
+    renderMobileHeaderTrackSelectors,
     applySelectedSubtitleTrack,
     handleManualSrtUpload
 } from './player-tracks.js';
 
-// Re-export so main.js and movie.js keep importing everything from ./player.js
 export {
     updatePlayButtonForMovie,
     isTracksMenuOpen,
@@ -48,26 +48,48 @@ export {
     handleManualSrtUpload
 };
 
-let activeHlsInstance = null;
+const PREPARE_POLL_MS = 700;
+
+let activePrepareJobId = '';
 let fullscreenControlsTimer = null;
 let isHoveringVideoControls = false;
-let keyboardSeekTimer = null;
-let pendingKeyboardSeekTarget = null;
 
 initTrackCallbacks({
     onReloadStream: reloadStreamForTrackChange,
     onControlsActivity: showFullscreenControls
 });
 
-// --- HLS & Stream Lifecycle ---
-function destroyActiveHls() {
-    if (activeHlsInstance) {
-        activeHlsInstance.destroy();
-        activeHlsInstance = null;
+// --- UI Helpers ---
+function setPrepareOverlay(visible, statusText = '', percent = 0, { showCancel = false } = {}) {
+    if (!dom.videoPrepareOverlay) return;
+    dom.videoPrepareOverlay.classList.toggle('hidden', !visible);
+    if (!visible) {
+        dom.videoPrepareHint?.classList.add('hidden');
+        dom.videoPrepareCancelBtn?.classList.add('hidden');
+        return;
     }
+
+    const clamped = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
+    if (dom.videoPrepareStatus && statusText) {
+        dom.videoPrepareStatus.textContent = statusText;
+    }
+    if (dom.videoPrepareBarFill) {
+        dom.videoPrepareBarFill.style.width = `${clamped}%`;
+    }
+    if (dom.videoPreparePercent) {
+        dom.videoPreparePercent.textContent = `${clamped}%`;
+    }
+    dom.videoPrepareHint?.classList.toggle('hidden', !showCancel);
+    dom.videoPrepareCancelBtn?.classList.toggle('hidden', !showCancel);
 }
 
-function notifyServerStopStream(ticket) {
+function setPlayerError(message = '') {
+    if (!dom.videoPlayerError) return;
+    dom.videoPlayerError.textContent = message;
+    dom.videoPlayerError.classList.toggle('hidden', !message);
+}
+
+function notifyServerCancelPrepare(ticket) {
     if (!ticket) return;
     fetch(`/api/local-files/stream-stop?ticket=${encodeURIComponent(ticket)}`, {
         method: 'POST',
@@ -75,17 +97,25 @@ function notifyServerStopStream(ticket) {
     }).catch(() => {});
 }
 
+function applyPlayerModeForDevice() {
+    const useNative = isMobileOsDevice();
+    playerState.useNativePlayer = useNative;
+    dom.videoPlayerModal?.classList.toggle('native-mobile-player', useNative);
+    if (dom.localVideoPlayer) {
+        dom.localVideoPlayer.controls = useNative;
+    }
+    renderMobileHeaderTrackSelectors();
+}
+
 function stopLocalVideoPlayback() {
+    activePrepareJobId = '';
     hideResumeBanner();
-    clearTimeout(keyboardSeekTimer);
-    keyboardSeekTimer = null;
-    pendingKeyboardSeekTarget = null;
+    setPrepareOverlay(false);
     clearFullscreenControlsTimer();
     dom.videoPlayerStage?.classList.remove('controls-hidden');
-    destroyActiveHls();
     clearVideoSubtitleTracks();
     if (playerState.ticket) {
-        notifyServerStopStream(playerState.ticket);
+        notifyServerCancelPrepare(playerState.ticket);
     }
     if (!dom.localVideoPlayer) return;
     dom.localVideoPlayer.onerror = null;
@@ -96,74 +126,135 @@ function stopLocalVideoPlayback() {
     syncSeekBarMetrics(0, 0);
 }
 
-async function attachFfmpegStream(ticket, startSeconds, requestId, ffmpegAvailable) {
-    if (!dom.localVideoPlayer) return;
-    destroyActiveHls();
+// --- Faststart MP4 Preparation & Mounting ---
+async function prepareAndMountStream(
+    requestId,
+    resumeSeconds,
+    { showResumeNotice = true, autoPlay = true } = {}
+) {
+    if (!dom.localVideoPlayer || !playerState.ticket) return;
 
-    const canNativeHls = Boolean(
-        dom.localVideoPlayer.canPlayType('application/vnd.apple.mpegurl')
+    activePrepareJobId = '';
+    playerState.isLoadingSource = true;
+    setPlayerError('');
+    hideResumeBanner();
+    setPrepareOverlay(true, 'Checking server cache...', 0);
+
+    const prepRes = await fetch(
+        `/api/local-files/prepare?ticket=${encodeURIComponent(playerState.ticket)}&audio_track=${playerState.selectedAudioTrackIndex}&burn_sub=${playerState.burnSubTrackIndex}`,
+        { method: 'POST' }
     );
-    const canHlsJs = Boolean(window.Hls && window.Hls.isSupported());
+    const prepData = await prepRes.json().catch(() => ({}));
+    if (requestId !== playerState.streamRequestId) return;
 
-    const burnParam = playerState.burnSubTrackIndex >= 0
-        ? `&burn_sub=${playerState.burnSubTrackIndex}`
-        : '';
-    const audioParam = playerState.selectedAudioTrackIndex > 0
-        ? `&audio_track=${playerState.selectedAudioTrackIndex}`
-        : '';
-
-    if (canNativeHls || canHlsJs) {
-        const hlsRes = await fetch(
-            `/api/local-files/hls-start?ticket=${encodeURIComponent(ticket)}&start=${startSeconds}${burnParam}${audioParam}`,
-            { method: 'POST' }
-        );
-        const hlsData = await hlsRes.json().catch(() => ({}));
-        if (requestId !== playerState.streamRequestId) return;
-
-        if (!hlsRes.ok || !hlsData.playlist_url) {
-            throw new Error(hlsData.detail || 'Could not start HLS video stream.');
-        }
-
-        if (canHlsJs) {
-            const hls = new window.Hls({
-                lowLatencyMode: false,
-                backBufferLength: 30
-            });
-            activeHlsInstance = hls;
-            hls.on(window.Hls.Events.ERROR, (_event, errData) => {
-                if (errData?.fatal && requestId === playerState.streamRequestId && dom.videoPlayerError) {
-                    dom.videoPlayerError.textContent =
-                        'Playback interrupted. Try seeking slightly or downloading the file.';
-                    dom.videoPlayerError.classList.remove('hidden');
-                }
-            });
-            hls.loadSource(hlsData.playlist_url);
-            hls.attachMedia(dom.localVideoPlayer);
-            hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
-                if (requestId !== playerState.streamRequestId) return;
-                applySelectedSubtitleTrack();
-                dom.localVideoPlayer.play().catch(() => syncVideoControlIcons());
-            });
-        } else {
-            // Native HLS (iOS Firefox / Safari)
-            dom.localVideoPlayer.src = hlsData.playlist_url;
-            applySelectedSubtitleTrack();
-            dom.localVideoPlayer.play().catch(() => syncVideoControlIcons());
-        }
-        return;
+    if (!prepRes.ok || prepData.status === 'error') {
+        throw new Error(prepData.error || prepData.detail || 'Could not prepare video.');
     }
 
-    // Offline fallback if hls.js CDN couldn't load on non-Safari browsers
+    let streamUrl = prepData.stream_url || '';
+
+    if (prepData.status === 'preparing' && prepData.job_id) {
+        activePrepareJobId = prepData.job_id;
+        setPrepareOverlay(
+            true,
+            prepData.mode_label || 'Caching video once for all devices...',
+            prepData.progress || 0,
+            { showCancel: true }
+        );
+
+        while (requestId === playerState.streamRequestId) {
+            await sleep(PREPARE_POLL_MS);
+            if (requestId !== playerState.streamRequestId) return;
+
+            const pollRes = await fetch(
+                `/api/local-files/prepare-status?ticket=${encodeURIComponent(playerState.ticket)}&job_id=${encodeURIComponent(prepData.job_id)}`
+            );
+            const pollData = await pollRes.json().catch(() => ({}));
+            if (requestId !== playerState.streamRequestId) return;
+
+            if (!pollRes.ok || pollData.status === 'error') {
+                activePrepareJobId = '';
+                throw new Error(pollData.error || pollData.detail || 'Video preparation failed.');
+            }
+            if (pollData.status === 'cancelled') {
+                activePrepareJobId = '';
+                return;
+            }
+            if (pollData.status === 'ready' && pollData.stream_url) {
+                activePrepareJobId = '';
+                streamUrl = pollData.stream_url;
+                break;
+            }
+            setPrepareOverlay(
+                true,
+                pollData.mode_label || 'Caching video once for all devices...',
+                pollData.progress || 0,
+                { showCancel: true }
+            );
+        }
+    }
+
+    if (requestId !== playerState.streamRequestId || !streamUrl) return;
+
+    setPrepareOverlay(false);
+
     dom.localVideoPlayer.onerror = () => {
-        if (requestId !== playerState.streamRequestId || !dom.videoPlayerError) return;
-        dom.videoPlayerError.textContent = ffmpegAvailable
-            ? 'Your browser could not play this stream directly. Try downloading the file instead.'
-            : 'MKV/HEVC playback requires FFmpeg installed on your server (add ffmpeg to PATH or set FFMPEG_PATH in .env).';
-        dom.videoPlayerError.classList.remove('hidden');
+        if (requestId !== playerState.streamRequestId) return;
+        playerState.isLoadingSource = false;
+        setPlayerError('Your browser could not play this video file. Try downloading it instead.');
     };
-    dom.localVideoPlayer.src = `/api/local-files/stream?ticket=${encodeURIComponent(ticket)}&start=${startSeconds}${burnParam}${audioParam}`;
+
+    const onMetadataReady = () => {
+        if (requestId !== playerState.streamRequestId) return;
+
+        const mediaDur = Number.isFinite(dom.localVideoPlayer.duration) && dom.localVideoPlayer.duration > 0
+            ? dom.localVideoPlayer.duration
+            : playerState.duration;
+        if (mediaDur > 0) playerState.duration = mediaDur;
+
+        const safeResume = resumeSeconds >= RESUME_MIN_SECONDS &&
+            (mediaDur <= 0 || resumeSeconds / mediaDur < RESUME_COMPLETE_RATIO)
+            ? (mediaDur > 0 ? Math.min(resumeSeconds, Math.max(0, mediaDur - 5)) : resumeSeconds)
+            : 0;
+
+        if (safeResume >= RESUME_MIN_SECONDS) {
+            try {
+                dom.localVideoPlayer.currentTime = safeResume;
+            } catch {}
+
+            // iOS WebKit safeguard: re-apply once playable if currentTime snapped back to 0
+            dom.localVideoPlayer.addEventListener(
+                'canplay',
+                () => {
+                    if (requestId !== playerState.streamRequestId) return;
+                    if (Math.abs((dom.localVideoPlayer.currentTime || 0) - safeResume) > 3) {
+                        try {
+                            dom.localVideoPlayer.currentTime = safeResume;
+                        } catch {}
+                    }
+                },
+                { once: true }
+            );
+
+            syncSeekBarMetrics(safeResume, mediaDur);
+            if (showResumeNotice) {
+                showResumeBanner(safeResume);
+            }
+        } else {
+            syncSeekBarMetrics(0, mediaDur);
+        }
+
+        playerState.isLoadingSource = false;
+        if (autoPlay) {
+            dom.localVideoPlayer.play().catch(() => syncVideoControlIcons());
+        } else {
+            syncVideoControlIcons();
+        }
+    };
+
+    dom.localVideoPlayer.addEventListener('loadedmetadata', onMetadataReady, { once: true });
+    dom.localVideoPlayer.src = streamUrl;
     applySelectedSubtitleTrack();
-    dom.localVideoPlayer.play().catch(() => syncVideoControlIcons());
 }
 
 async function reloadStreamForTrackChange({
@@ -172,59 +263,63 @@ async function reloadStreamForTrackChange({
 } = {}) {
     if (!playerState.ticket || !dom.localVideoPlayer) return;
 
-    const resumeAt = getCurrentPlaybackSeconds();
+    const resumeAt = dom.localVideoPlayer.currentTime || 0;
     const wasPaused = dom.localVideoPlayer.paused;
     const requestId = ++playerState.streamRequestId;
 
     playerState.burnSubTrackIndex = nextBurnIndex;
     playerState.selectedAudioTrackIndex = nextAudioIndex;
     clearVideoSubtitleTracks();
-
-    if (dom.videoPlayerError) {
-        dom.videoPlayerError.textContent = '';
-        dom.videoPlayerError.classList.add('hidden');
-    }
+    dom.localVideoPlayer.pause();
 
     try {
-        dom.localVideoPlayer.pause();
-
-        if (isUsingFfmpegPlayback()) {
-            playerState.seekOffset = resumeAt;
-            syncSeekBarMetrics(resumeAt, playerState.duration);
-            await attachFfmpegStream(playerState.ticket, resumeAt, requestId, true);
-            if (wasPaused && requestId === playerState.streamRequestId) {
-                dom.localVideoPlayer.pause();
-                syncVideoControlIcons();
-            }
-        } else {
-            destroyActiveHls();
-            notifyServerStopStream(playerState.ticket);
-            playerState.seekOffset = 0;
-            dom.localVideoPlayer.src = `/api/local-files/stream?ticket=${encodeURIComponent(playerState.ticket)}`;
-            dom.localVideoPlayer.addEventListener(
-                'loadedmetadata',
-                () => {
-                    if (requestId !== playerState.streamRequestId) return;
-                    dom.localVideoPlayer.currentTime = resumeAt;
-                    applySelectedSubtitleTrack();
-                    if (!wasPaused) {
-                        dom.localVideoPlayer.play().catch(() => syncVideoControlIcons());
-                    }
-                },
-                { once: true }
-            );
-        }
+        await prepareAndMountStream(requestId, resumeAt, {
+            showResumeNotice: false,
+            autoPlay: !wasPaused
+        });
     } catch (error) {
         if (requestId !== playerState.streamRequestId) return;
+        playerState.isLoadingSource = false;
+        setPrepareOverlay(false);
         console.error('Track switch error:', error);
-        if (dom.videoPlayerError) {
-            dom.videoPlayerError.textContent = error.message || 'Could not switch audio or subtitle track.';
-            dom.videoPlayerError.classList.remove('hidden');
-        }
+        setPlayerError(error.message || 'Could not switch audio or subtitle track.');
     }
 }
 
-// --- Fullscreen Auto-Hide & Control Icons ---
+export async function handleAudioTrackChange() {
+    if (!dom.videoAudioSelect || !playerState.ticket) return;
+    const nextAudio = parseInt(dom.videoAudioSelect.value, 10) || 0;
+    if (nextAudio === playerState.selectedAudioTrackIndex) return;
+    await reloadStreamForTrackChange({ nextAudioIndex: nextAudio });
+}
+
+export async function handleBurnSubChange() {
+    if (!dom.videoBurnSubSelect || !playerState.ticket) return;
+    const nextBurn = parseInt(dom.videoBurnSubSelect.value, 10);
+    const safeBurn = Number.isNaN(nextBurn) ? -1 : nextBurn;
+    if (safeBurn === playerState.burnSubTrackIndex) return;
+    await reloadStreamForTrackChange({ nextBurnIndex: safeBurn });
+}
+
+export async function handleCancelPrepareClick(event) {
+    event?.stopPropagation();
+    const ticket = playerState.ticket;
+    const jobId = activePrepareJobId;
+    activePrepareJobId = '';
+
+    if (ticket && jobId) {
+        try {
+            await fetch(
+                `/api/local-files/prepare-cancel?ticket=${encodeURIComponent(ticket)}&job_id=${encodeURIComponent(jobId)}`,
+                { method: 'POST' }
+            );
+        } catch {}
+    }
+
+    closeVideoPlayerModal();
+}
+
+// --- Desktop Fullscreen Auto-Hide & Control Icons ---
 function isVideoInFullscreen() {
     const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
     return Boolean(
@@ -241,6 +336,7 @@ function clearFullscreenControlsTimer() {
 }
 
 export function showFullscreenControls() {
+    if (playerState.useNativePlayer) return;
     clearFullscreenControlsTimer();
     dom.videoPlayerStage?.classList.remove('controls-hidden');
 
@@ -270,22 +366,26 @@ export function showFullscreenControls() {
 }
 
 export function setControlsHoverState(isHovered) {
+    if (playerState.useNativePlayer || !window.matchMedia('(hover: hover)').matches) return;
     isHoveringVideoControls = Boolean(isHovered);
     showFullscreenControls();
 }
 
 export function handleFullscreenChange() {
+    if (playerState.useNativePlayer) return;
     if (!isVideoInFullscreen()) {
         clearFullscreenControlsTimer();
         isHoveringVideoControls = false;
         dom.videoPlayerStage?.classList.remove('controls-hidden');
+        syncVideoControlIcons();
         return;
     }
+    syncVideoControlIcons();
     showFullscreenControls();
 }
 
 export function syncVideoControlIcons() {
-    if (!dom.localVideoPlayer) return;
+    if (!dom.localVideoPlayer || playerState.useNativePlayer) return;
     if (dom.videoPlayPauseBtn) {
         dom.videoPlayPauseBtn.innerHTML = dom.localVideoPlayer.paused
             ? PLAYER_PLAY_SVG
@@ -296,6 +396,12 @@ export function syncVideoControlIcons() {
             ? PLAYER_VOL_OFF_SVG
             : PLAYER_VOL_ON_SVG;
     }
+    if (dom.videoFullscreenBtn) {
+        const inFs = isVideoInFullscreen();
+        dom.videoFullscreenBtn.innerHTML = inFs ? PLAYER_FS_EXIT_SVG : PLAYER_FS_ENTER_SVG;
+        dom.videoFullscreenBtn.title = inFs ? 'Exit Fullscreen' : 'Fullscreen';
+        dom.videoFullscreenBtn.setAttribute('aria-label', inFs ? 'Exit Fullscreen' : 'Toggle Fullscreen');
+    }
     if (isVideoInFullscreen()) {
         showFullscreenControls();
     }
@@ -303,6 +409,7 @@ export function syncVideoControlIcons() {
 
 // --- Transport, Seeking & Keyboard Shortcuts ---
 export function handleVideoSurfaceClick() {
+    if (playerState.useNativePlayer) return;
     if (isTracksMenuOpen()) {
         closeVideoTracksMenu();
         return;
@@ -312,7 +419,7 @@ export function handleVideoSurfaceClick() {
 
 export function handleVideoLoadedMetadata() {
     if (!dom.localVideoPlayer) return;
-    if (!isUsingFfmpegPlayback() && Number.isFinite(dom.localVideoPlayer.duration)) {
+    if (Number.isFinite(dom.localVideoPlayer.duration) && dom.localVideoPlayer.duration > 0) {
         playerState.duration = dom.localVideoPlayer.duration;
         syncSeekBarMetrics(dom.localVideoPlayer.currentTime, playerState.duration);
     }
@@ -321,19 +428,20 @@ export function handleVideoLoadedMetadata() {
 
 export function handleVideoTimeUpdate() {
     if (playerState.isScrubbing || !dom.localVideoPlayer) return;
-    const rawTime = dom.localVideoPlayer.currentTime || 0;
-    const currentTotal = isUsingFfmpegPlayback()
-        ? playerState.seekOffset + rawTime
-        : rawTime;
-    const totalDur = playerState.duration ||
-        (Number.isFinite(dom.localVideoPlayer.duration) ? dom.localVideoPlayer.duration : 0);
-    syncSeekBarMetrics(currentTotal, totalDur);
+    const currentSec = dom.localVideoPlayer.currentTime || 0;
+    const totalDur = Number.isFinite(dom.localVideoPlayer.duration) && dom.localVideoPlayer.duration > 0
+        ? dom.localVideoPlayer.duration
+        : playerState.duration;
+
+    if (!playerState.useNativePlayer) {
+        syncSeekBarMetrics(currentSec, totalDur);
+    }
 
     if (!playerState.isLoadingSource && !dom.localVideoPlayer.paused) {
         persistWatchProgress(
             playerState.movieId,
             playerState.filePath,
-            currentTotal,
+            currentSec,
             totalDur
         );
     }
@@ -341,6 +449,13 @@ export function handleVideoTimeUpdate() {
 
 export function handleVideoPause() {
     syncVideoControlIcons();
+    saveCurrentPlaybackProgress({ force: true });
+    updatePlayButtonForCurrentMovie();
+}
+
+export function handleVideoSeeked() {
+    if (playerState.isLoadingSource) return;
+    hideResumeBanner();
     saveCurrentPlaybackProgress({ force: true });
     updatePlayButtonForCurrentMovie();
 }
@@ -363,7 +478,7 @@ export function handleVideoEnded() {
 export function handleStartOverClick(event) {
     event?.stopPropagation();
     hideResumeBanner();
-    if (!playerState.movieId || !playerState.filePath) return;
+    if (!dom.localVideoPlayer || !playerState.movieId || !playerState.filePath) return;
 
     persistWatchProgress(
         playerState.movieId,
@@ -373,7 +488,9 @@ export function handleStartOverClick(event) {
         { force: true }
     );
     updatePlayButtonForCurrentMovie();
-    commitVideoSeek(0);
+    dom.localVideoPlayer.currentTime = 0;
+    syncSeekBarMetrics(0, playerState.duration);
+    dom.localVideoPlayer.play().catch(() => {});
 }
 
 export function savePlaybackProgressOnExit() {
@@ -390,15 +507,17 @@ export function handleVideoSeekInput() {
     }
 }
 
-async function commitVideoSeek(targetSec) {
+function commitVideoSeek(targetSec) {
     if (!dom.localVideoPlayer) return;
-
     hideResumeBanner();
 
-    const totalDur = playerState.duration ||
-        (Number.isFinite(dom.localVideoPlayer.duration) ? dom.localVideoPlayer.duration : 0);
+    const totalDur = Number.isFinite(dom.localVideoPlayer.duration) && dom.localVideoPlayer.duration > 0
+        ? dom.localVideoPlayer.duration
+        : playerState.duration;
     const clampedSec = Math.max(0, totalDur > 0 ? Math.min(totalDur, targetSec) : targetSec);
 
+    dom.localVideoPlayer.currentTime = clampedSec;
+    syncSeekBarMetrics(clampedSec, totalDur);
     persistWatchProgress(
         playerState.movieId,
         playerState.filePath,
@@ -407,83 +526,22 @@ async function commitVideoSeek(targetSec) {
         { force: true }
     );
     updatePlayButtonForCurrentMovie();
-
-    if (!isUsingFfmpegPlayback()) {
-        dom.localVideoPlayer.currentTime = clampedSec;
-        syncSeekBarMetrics(clampedSec, totalDur);
-        return;
-    }
-
-    if (!playerState.ticket) return;
-    const requestId = ++playerState.streamRequestId;
-    playerState.seekOffset = clampedSec;
-    syncSeekBarMetrics(clampedSec, playerState.duration);
-
-    if (dom.videoPlayerError) {
-        dom.videoPlayerError.textContent = '';
-        dom.videoPlayerError.classList.add('hidden');
-    }
-
-    try {
-        dom.localVideoPlayer.pause();
-        await attachFfmpegStream(playerState.ticket, clampedSec, requestId, true);
-    } catch (error) {
-        if (requestId !== playerState.streamRequestId) return;
-        console.error('Seek error:', error);
-        if (dom.videoPlayerError) {
-            dom.videoPlayerError.textContent = error.message || 'Could not seek video.';
-            dom.videoPlayerError.classList.remove('hidden');
-        }
-    }
 }
 
-export async function handleVideoSeekCommit() {
+export function handleVideoSeekCommit() {
     playerState.isScrubbing = false;
     showFullscreenControls();
     if (!dom.videoSeekSlider || !dom.localVideoPlayer) return;
 
-    clearTimeout(keyboardSeekTimer);
-    keyboardSeekTimer = null;
-    pendingKeyboardSeekTarget = null;
-
     const targetSec = Math.max(0, Number(dom.videoSeekSlider.value) || 0);
     dom.videoSeekSlider.blur();
-    await commitVideoSeek(targetSec);
+    commitVideoSeek(targetSec);
 }
 
 function seekVideoByDelta(deltaSeconds) {
     if (!dom.localVideoPlayer) return;
-
-    const totalDur = playerState.duration ||
-        (Number.isFinite(dom.localVideoPlayer.duration) ? dom.localVideoPlayer.duration : 0);
-
-    const currentPos = isUsingFfmpegPlayback()
-        ? (pendingKeyboardSeekTarget !== null
-            ? pendingKeyboardSeekTarget
-            : playerState.seekOffset + (dom.localVideoPlayer.currentTime || 0))
-        : (dom.localVideoPlayer.currentTime || 0);
-
-    const nextTarget = Math.max(
-        0,
-        totalDur > 0 ? Math.min(totalDur, currentPos + deltaSeconds) : currentPos + deltaSeconds
-    );
-
-    if (!isUsingFfmpegPlayback()) {
-        commitVideoSeek(nextTarget);
-        return;
-    }
-
-    pendingKeyboardSeekTarget = nextTarget;
-    syncSeekBarMetrics(nextTarget, totalDur);
-    clearTimeout(keyboardSeekTimer);
-    keyboardSeekTimer = setTimeout(() => {
-        const finalTarget = pendingKeyboardSeekTarget;
-        pendingKeyboardSeekTarget = null;
-        keyboardSeekTimer = null;
-        if (finalTarget !== null) {
-            commitVideoSeek(finalTarget);
-        }
-    }, FFMPEG_KEY_SEEK_DEBOUNCE_MS);
+    const currentPos = dom.localVideoPlayer.currentTime || 0;
+    commitVideoSeek(currentPos + deltaSeconds);
 }
 
 export function toggleVideoPlayPause() {
@@ -526,7 +584,7 @@ export function toggleVideoFullscreen() {
 }
 
 export function handleVideoPlayerKeydown(event) {
-    if (event.ctrlKey || event.metaKey || event.altKey) return;
+    if (playerState.useNativePlayer || event.ctrlKey || event.metaKey || event.altKey) return;
 
     const activeEl = document.activeElement;
     if (
@@ -573,12 +631,11 @@ async function loadLocalVideoSource(movieId, filePath) {
     playerState.isLoadingSource = true;
     stopLocalVideoPlayback();
     closeVideoTracksMenu();
+
     playerState.movieId = String(movieId);
     playerState.filePath = filePath;
     playerState.ticket = '';
-    playerState.mode = 'direct';
     playerState.duration = 0;
-    playerState.seekOffset = 0;
     playerState.burnSubTrackIndex = -1;
     playerState.selectedSubtitleValue = '';
     playerState.audioTracks = [];
@@ -588,11 +645,9 @@ async function loadLocalVideoSource(movieId, filePath) {
     playerState.lastSavedPosition = -1;
     playerState.serverSubtitles = [];
     renderVideoTracksMenu();
-
-    if (dom.videoPlayerError) {
-        dom.videoPlayerError.textContent = '';
-        dom.videoPlayerError.classList.add('hidden');
-    }
+    renderMobileHeaderTrackSelectors();
+    setPlayerError('');
+    setPrepareOverlay(true, 'Checking video format...', 0);
 
     try {
         const response = await fetch('/api/local-files/stream-ticket', {
@@ -615,74 +670,41 @@ async function loadLocalVideoSource(movieId, filePath) {
         }
 
         playerState.ticket = data.ticket;
-        playerState.mode = data.mode || 'direct';
         playerState.duration = Number(data.duration) || 0;
         playerState.serverSubtitles = Array.isArray(data.subtitles) ? data.subtitles : [];
         playerState.audioTracks = Array.isArray(data.audio_tracks) ? data.audio_tracks : [];
         playerState.selectedAudioTrackIndex = 0;
 
-        const resumeAt = getResumeSecondsForSource(movieId, filePath, playerState.duration);
-        playerState.seekOffset = playerState.mode === 'ffmpeg' ? resumeAt : 0;
-        syncSeekBarMetrics(resumeAt, playerState.duration);
+        const defaultIdx = Number.isInteger(data.default_subtitle_index)
+            ? data.default_subtitle_index
+            : -1;
+        const defaultSub = defaultIdx >= 0
+            ? playerState.serverSubtitles.find((sub) => sub.index === defaultIdx)
+            : null;
 
-        const defaultSidecar = playerState.serverSubtitles.find(
-            (sub) => sub.source === 'file'
-        );
-        playerState.selectedSubtitleValue = defaultSidecar ? `server:${defaultSidecar.index}` : '';
-        renderVideoTracksMenu();
-
-        if (playerState.mode === 'ffmpeg') {
-            await attachFfmpegStream(data.ticket, resumeAt, requestId, Boolean(data.ffmpeg_available));
-            if (requestId !== playerState.streamRequestId) return;
-            playerState.isLoadingSource = false;
-            if (resumeAt > 0) {
-                showResumeBanner(resumeAt);
-            }
+        if (defaultSub) {
+            playerState.selectedSubtitleValue = `server:${defaultSub.index}`;
+            const needsBurnIn =
+                defaultSub.render_mode === 'burn' &&
+                (playerState.useNativePlayer || !defaultSub.pgs_canvas);
+            playerState.burnSubTrackIndex = needsBurnIn ? defaultSub.index : -1;
         } else {
-            dom.localVideoPlayer.onerror = () => {
-                if (requestId !== playerState.streamRequestId || !dom.videoPlayerError) return;
-                playerState.isLoadingSource = false;
-                dom.videoPlayerError.textContent =
-                    'Your browser could not play this video format directly. Try downloading the file instead.';
-                dom.videoPlayerError.classList.remove('hidden');
-            };
-            dom.localVideoPlayer.src = `/api/local-files/stream?ticket=${encodeURIComponent(data.ticket)}`;
-            applySelectedSubtitleTrack();
-
-            if (resumeAt > 0) {
-                dom.localVideoPlayer.addEventListener(
-                    'loadedmetadata',
-                    () => {
-                        if (requestId !== playerState.streamRequestId) return;
-                        const mediaDur = Number.isFinite(dom.localVideoPlayer.duration)
-                            ? dom.localVideoPlayer.duration
-                            : playerState.duration;
-                        const safeResume = mediaDur > 0 && resumeAt / mediaDur < RESUME_COMPLETE_RATIO
-                            ? Math.min(resumeAt, Math.max(0, mediaDur - 5))
-                            : 0;
-                        if (safeResume >= RESUME_MIN_SECONDS) {
-                            dom.localVideoPlayer.currentTime = safeResume;
-                            syncSeekBarMetrics(safeResume, mediaDur);
-                            showResumeBanner(safeResume);
-                        }
-                        playerState.isLoadingSource = false;
-                        dom.localVideoPlayer.play().catch(() => syncVideoControlIcons());
-                    },
-                    { once: true }
-                );
-            } else {
-                playerState.isLoadingSource = false;
-                dom.localVideoPlayer.play().catch(() => syncVideoControlIcons());
-            }
+            playerState.selectedSubtitleValue = '';
+            playerState.burnSubTrackIndex = -1;
         }
+        
+        renderVideoTracksMenu();
+        renderMobileHeaderTrackSelectors();
+
+        const resumeAt = getResumeSecondsForSource(movieId, filePath, playerState.duration);
+        syncSeekBarMetrics(resumeAt, playerState.duration);
+        await prepareAndMountStream(requestId, resumeAt, { showResumeNotice: true, autoPlay: true });
     } catch (error) {
         if (requestId !== playerState.streamRequestId) return;
         playerState.isLoadingSource = false;
+        setPrepareOverlay(false);
         console.error('Local video stream error:', error);
-        if (dom.videoPlayerError) {
-            dom.videoPlayerError.textContent = error.message || 'Failed to load local video.';
-            dom.videoPlayerError.classList.remove('hidden');
-        }
+        setPlayerError(error.message || 'Failed to load local video.');
     }
 }
 
@@ -700,6 +722,7 @@ export function openVideoPlayerForCurrentMovie() {
     if (localPaths.length === 0) return;
 
     playerState.manualSubtitles = [];
+    applyPlayerModeForDevice();
 
     if (dom.videoPlayerTitle) {
         dom.videoPlayerTitle.textContent = movie.title || `Movie #${movie.movie_id}`;
@@ -738,16 +761,15 @@ export function closeVideoPlayerModal() {
     saveCurrentPlaybackProgress({ force: true });
     playerState.streamRequestId++;
     playerState.isLoadingSource = false;
-    if (isVideoInFullscreen()) {
+    if (document.fullscreenElement || document.webkitFullscreenElement) {
         (document.exitFullscreen || document.webkitExitFullscreen)?.call(document);
     }
     stopLocalVideoPlayback();
+
     playerState.movieId = '';
     playerState.filePath = '';
     playerState.ticket = '';
-    playerState.mode = 'direct';
     playerState.duration = 0;
-    playerState.seekOffset = 0;
     playerState.burnSubTrackIndex = -1;
     playerState.selectedSubtitleValue = '';
     playerState.audioTracks = [];
@@ -759,11 +781,9 @@ export function closeVideoPlayerModal() {
     playerState.manualSubtitles = [];
     closeVideoTracksMenu();
     renderVideoTracksMenu();
+    renderMobileHeaderTrackSelectors();
     if (dom.srtFileInput) dom.srtFileInput.value = '';
-    if (dom.videoPlayerError) {
-        dom.videoPlayerError.textContent = '';
-        dom.videoPlayerError.classList.add('hidden');
-    }
+    setPlayerError('');
     updatePlayButtonForCurrentMovie();
     closeModal(dom.videoPlayerModal);
 }

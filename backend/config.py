@@ -37,3 +37,11 @@ LOCAL_MOVIES_DIR = os.getenv("LOCAL_MOVIES_DIR", "").strip()
 # Optional FFmpeg / FFprobe paths for MKV & non-native codec streaming
 FFMPEG_PATH = os.getenv("FFMPEG_PATH", "").strip()
 FFPROBE_PATH = os.getenv("FFPROBE_PATH", "").strip()
+
+# Prepared MP4 Stream Cache (for smooth playback & instant replays)
+STREAM_CACHE_DIR = os.getenv("STREAM_CACHE_DIR", ".stream_cache").strip() or ".stream_cache"
+STREAM_CACHE_MAX_GB = float(os.getenv("STREAM_CACHE_MAX_GB", "15"))
+# Cap resolution height when transcoding (1080 is ~4x faster than 4K)
+STREAM_MAX_HEIGHT = int(os.getenv("STREAM_MAX_HEIGHT", "1080"))
+# Hardware encoder 
+FFMPEG_HW_ENCODER = os.getenv("FFMPEG_HW_ENCODER", "auto").strip().lower() or "auto"

@@ -1,8 +1,9 @@
 import { dom } from './dom.js';
-import { playerState, isUsingFfmpegPlayback } from './player-state.js';
+import { playerState } from './player-state.js';
+import { loadPgsSubtitleUrl, clearPgsSubtitles } from './player-pgs.js';
 
 let activeSubtitleRequestId = 0;
-let activeManualSubtitleBlobUrl = null;
+let activeBlobUrls = [];
 let onReloadStream = async () => {};
 let onControlsActivity = () => {};
 
@@ -35,7 +36,7 @@ function formatVttTimestamp(seconds) {
     return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${String(ms).padStart(3, '0')}`;
 }
 
-function convertSrtToVtt(rawText, offsetSeconds = 0) {
+function convertSrtToVtt(rawText) {
     const timingRe = /^((?:\d{1,2}:)?\d{2}:\d{2}[.,]\d{3})\s*-->\s*((?:\d{1,2}:)?\d{2}:\d{2}[.,]\d{3})(.*)$/;
     const blocks = String(rawText || '')
         .replace(/^\uFEFF/, '')
@@ -57,8 +58,8 @@ function convertSrtToVtt(rawText, offsetSeconds = 0) {
         const match = lines[timingIdx].trim().match(timingRe);
         if (!match) continue;
 
-        const start = parseSubtitleTimestamp(match[1]) - offsetSeconds;
-        const end = parseSubtitleTimestamp(match[2]) - offsetSeconds;
+        const start = parseSubtitleTimestamp(match[1]);
+        const end = parseSubtitleTimestamp(match[2]);
         if (end <= 0) continue;
 
         const cueLines = lines.slice(timingIdx + 1);
@@ -72,10 +73,9 @@ function convertSrtToVtt(rawText, offsetSeconds = 0) {
 }
 
 export function clearVideoSubtitleTracks() {
-    if (activeManualSubtitleBlobUrl) {
-        URL.revokeObjectURL(activeManualSubtitleBlobUrl);
-        activeManualSubtitleBlobUrl = null;
-    }
+    clearPgsSubtitles();
+    activeBlobUrls.forEach((url) => URL.revokeObjectURL(url));
+    activeBlobUrls = [];
     if (!dom.localVideoPlayer) return;
     dom.localVideoPlayer.querySelectorAll('track').forEach((t) => t.remove());
 }
@@ -130,9 +130,15 @@ export function renderVideoTracksMenu() {
 
         playerState.serverSubtitles.forEach((sub) => {
             const val = `server:${sub.index}`;
+            let displayLabel = sub.label;
+            if (sub.pgs_canvas) {
+                displayLabel = `${sub.label} (PGS)`;
+            } else if (sub.render_mode === 'burn') {
+                displayLabel = `${sub.label} (Burn-in)`;
+            }
             dom.videoSubtitleList.appendChild(
                 createTrackOptionButton(
-                    sub.label,
+                    displayLabel,
                     playerState.selectedSubtitleValue === val,
                     () => selectSubtitleTrack(val)
                 )
@@ -181,18 +187,57 @@ export function renderVideoTracksMenu() {
     }
 }
 
-function mountVttBlobTrack(vttText, trackLabel) {
+export function renderMobileHeaderTrackSelectors() {
+    if (!dom.videoMobileTools) return;
+    dom.videoMobileTools.classList.toggle('hidden', !playerState.useNativePlayer);
+    if (!playerState.useNativePlayer) return;
+
+    if (dom.videoAudioSelect) {
+        dom.videoAudioSelect.innerHTML = '';
+        if (playerState.audioTracks.length > 1) {
+            playerState.audioTracks.forEach((track) => {
+                const opt = document.createElement('option');
+                opt.value = String(track.index);
+                opt.textContent = `Audio: ${track.label}`;
+                dom.videoAudioSelect.appendChild(opt);
+            });
+            dom.videoAudioSelect.value = String(playerState.selectedAudioTrackIndex);
+            dom.videoAudioSelect.classList.remove('hidden');
+        } else {
+            dom.videoAudioSelect.classList.add('hidden');
+        }
+    }
+
+    if (dom.videoBurnSubSelect) {
+        const bitmapSubs = playerState.serverSubtitles.filter((sub) => sub.render_mode === 'burn');
+        dom.videoBurnSubSelect.innerHTML = '<option value="-1">Image Sub: Off</option>';
+        if (bitmapSubs.length > 0) {
+            bitmapSubs.forEach((sub) => {
+                const opt = document.createElement('option');
+                opt.value = String(sub.index);
+                opt.textContent = `Image Sub: ${sub.label}`;
+                dom.videoBurnSubSelect.appendChild(opt);
+            });
+            dom.videoBurnSubSelect.value = String(playerState.burnSubTrackIndex);
+            dom.videoBurnSubSelect.classList.remove('hidden');
+        } else {
+            dom.videoBurnSubSelect.classList.add('hidden');
+        }
+    }
+}
+
+function mountSingleDesktopVttBlob(vttText, trackLabel) {
     clearVideoSubtitleTracks();
     if (!dom.localVideoPlayer || !vttText) return;
 
-    const blob = new Blob([vttText], { type: 'text/vtt;charset=utf-8' });
-    activeManualSubtitleBlobUrl = URL.createObjectURL(blob);
+    const blobUrl = URL.createObjectURL(new Blob([vttText], { type: 'text/vtt;charset=utf-8' }));
+    activeBlobUrls.push(blobUrl);
 
     const trackEl = document.createElement('track');
     trackEl.kind = 'subtitles';
     trackEl.label = trackLabel || 'Subtitles';
     trackEl.srclang = 'en';
-    trackEl.src = activeManualSubtitleBlobUrl;
+    trackEl.src = blobUrl;
     trackEl.default = true;
 
     const enableTrack = () => {
@@ -210,6 +255,62 @@ function mountVttBlobTrack(vttText, trackLabel) {
     dom.localVideoPlayer.appendChild(trackEl);
     enableTrack();
     requestAnimationFrame(enableTrack);
+}
+
+/**
+ * Mounts all text subtitle tracks directly on <video> for iOS / Android native CC menu.
+ */
+export function mountAllNativeSubtitleTracks({ activateLastManual = false } = {}) {
+    clearVideoSubtitleTracks();
+    if (!dom.localVideoPlayer || !playerState.ticket) return;
+
+    const textSubs = playerState.serverSubtitles.filter((sub) => sub.render_mode !== 'burn');
+    let hasDefaultTrack = false;
+
+    textSubs.forEach((sub) => {
+        const trackEl = document.createElement('track');
+        trackEl.kind = 'subtitles';
+        trackEl.label = sub.label || 'Subtitles';
+        trackEl.srclang = sub.language || 'en';
+        trackEl.src = `/api/local-files/subtitles?ticket=${encodeURIComponent(playerState.ticket)}&track=${sub.index}`; // unchanged
+        const isSelectedTextSub = playerState.selectedSubtitleValue === `server:${sub.index}`;
+        if (!activateLastManual && !hasDefaultTrack && isSelectedTextSub) {
+            trackEl.default = true;
+            hasDefaultTrack = true;
+        }
+        dom.localVideoPlayer.appendChild(trackEl);
+    });
+
+    playerState.manualSubtitles.forEach((sub, idx) => {
+        const vtt = convertSrtToVtt(sub.rawText);
+        const blobUrl = URL.createObjectURL(new Blob([vtt], { type: 'text/vtt;charset=utf-8' }));
+        activeBlobUrls.push(blobUrl);
+
+        const trackEl = document.createElement('track');
+        trackEl.kind = 'subtitles';
+        trackEl.label = sub.label || `Custom ${idx + 1}`;
+        trackEl.srclang = 'en';
+        trackEl.src = blobUrl;
+
+        const isTargetManual = activateLastManual && idx === playerState.manualSubtitles.length - 1;
+        if (isTargetManual) {
+            trackEl.default = true;
+            const enable = () => {
+                if (!dom.localVideoPlayer) return;
+                const list = dom.localVideoPlayer.textTracks;
+                for (let i = 0; i < list.length; i++) {
+                    list[i].mode = list[i] === trackEl.track ? 'showing' : 'disabled';
+                }
+                if (trackEl.track) trackEl.track.mode = 'showing';
+            };
+            trackEl.addEventListener('load', enable);
+            dom.localVideoPlayer.appendChild(trackEl);
+            enable();
+            requestAnimationFrame(enable);
+        } else {
+            dom.localVideoPlayer.appendChild(trackEl);
+        }
+    });
 }
 
 async function selectSubtitleTrack(value) {
@@ -231,6 +332,11 @@ async function selectAudioTrack(audioIndex) {
 }
 
 export async function applySelectedSubtitleTrack() {
+    if (playerState.useNativePlayer) {
+        mountAllNativeSubtitleTracks();
+        return;
+    }
+
     const subReqId = ++activeSubtitleRequestId;
     clearVideoSubtitleTracks();
     if (!dom.localVideoPlayer) return;
@@ -249,6 +355,26 @@ export async function applySelectedSubtitleTrack() {
         const sub = playerState.serverSubtitles.find((s) => s.index === idx);
         if (!sub || !playerState.ticket) return;
 
+        // Desktop client-side PGS (<canvas>) — instant, zero video re-encoding
+        if (sub.pgs_canvas) {
+            if (playerState.burnSubTrackIndex >= 0) {
+                await onReloadStream({ nextBurnIndex: -1 });
+                return;
+            }
+            const pgsUrl = `/api/local-files/pgs?ticket=${encodeURIComponent(playerState.ticket)}&track=${idx}`;
+            try {
+                await loadPgsSubtitleUrl(pgsUrl);
+            } catch (error) {
+                if (subReqId !== activeSubtitleRequestId) return;
+                console.error('PGS subtitle load error:', error);
+                if (dom.videoPlayerError) {
+                    dom.videoPlayerError.textContent = error.message || 'Could not load PGS subtitle track.';
+                    dom.videoPlayerError.classList.remove('hidden');
+                }
+            }
+            return;
+        }
+        
         if (sub.render_mode === 'burn') {
             if (playerState.burnSubTrackIndex !== idx) {
                 await onReloadStream({ nextBurnIndex: idx });
@@ -261,15 +387,14 @@ export async function applySelectedSubtitleTrack() {
             return;
         }
 
-        const offset = isUsingFfmpegPlayback() ? playerState.seekOffset : 0;
-        const url = `/api/local-files/subtitles?ticket=${encodeURIComponent(playerState.ticket)}&track=${idx}&offset=${offset}`;
+        const url = `/api/local-files/subtitles?ticket=${encodeURIComponent(playerState.ticket)}&track=${idx}`;
 
         try {
             const res = await fetch(url);
             if (!res.ok) throw new Error('Could not extract embedded subtitle track.');
             const vttText = await res.text();
             if (subReqId !== activeSubtitleRequestId) return;
-            mountVttBlobTrack(vttText, sub.label);
+            mountSingleDesktopVttBlob(vttText, sub.label);
         } catch (error) {
             if (subReqId !== activeSubtitleRequestId) return;
             console.error('Embedded subtitle load error:', error);
@@ -289,9 +414,8 @@ export async function applySelectedSubtitleTrack() {
         const idx = parseInt(value.slice('manual:'.length), 10);
         const sub = playerState.manualSubtitles[idx];
         if (!sub) return;
-        const offset = isUsingFfmpegPlayback() ? playerState.seekOffset : 0;
-        const vtt = convertSrtToVtt(sub.rawText, offset);
-        mountVttBlobTrack(vtt, sub.label);
+        const vtt = convertSrtToVtt(sub.rawText);
+        mountSingleDesktopVttBlob(vtt, sub.label);
     }
 }
 
@@ -303,9 +427,14 @@ export async function handleManualSrtUpload(event) {
         const rawText = await file.text();
         const label = file.name.replace(/\.(srt|vtt)$/i, '');
         const newIdx = playerState.manualSubtitles.push({ label, rawText }) - 1;
-        playerState.selectedSubtitleValue = `manual:${newIdx}`;
-        renderVideoTracksMenu();
-        await applySelectedSubtitleTrack();
+
+        if (playerState.useNativePlayer) {
+            mountAllNativeSubtitleTracks({ activateLastManual: true });
+        } else {
+            playerState.selectedSubtitleValue = `manual:${newIdx}`;
+            renderVideoTracksMenu();
+            await applySelectedSubtitleTrack();
+        }
     } catch (error) {
         console.error('Could not read subtitle file:', error);
         alert('Could not read the selected subtitle file.');

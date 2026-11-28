@@ -11,3 +11,4 @@ settings.json
 known_movies.json
 tmdb_cache.json
 tmdb_cache.json.tmp
+.stream_cache/
