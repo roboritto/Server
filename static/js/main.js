@@ -1,7 +1,7 @@
 import { state } from './state.js';
 import { dom } from './dom.js';
 import { triggerDiceRollAnimation } from './utils.js';
-import { verifyAndLoadConfig, initAuth } from './api.js';
+import { verifyAndLoadConfig, initAuth, setGuestPreviewMode } from './api.js';
 import {
     updateMobileNavVisibility,
     goBackPage,
@@ -9,7 +9,11 @@ import {
     openModal,
     closeModal
 } from './navigation.js';
-import { performDatabaseSearch, renderSearchResults } from './search.js';
+import {
+    performDatabaseSearch,
+    renderSearchResults,
+    handleSearchInputKeydown
+} from './search.js';
 import {
     initHomeCatalogFilters,
     renderHomeRandomMovies,
@@ -95,6 +99,10 @@ dom.scrollTopBtn?.addEventListener('click', () => {
 });
 
 // --- 3. Home Page Listeners ---
+dom.guestPreviewToggle?.addEventListener('change', (event) => {
+    setGuestPreviewMode(event.target.checked);
+});
+
 dom.homeRerollRandomBtn?.addEventListener('click', () => {
     triggerDiceRollAnimation(dom.homeRerollRandomBtn);
     renderHomeRandomMovies();
@@ -275,6 +283,15 @@ dom.homeSearchInput?.addEventListener('focus', () => {
     }
 });
 
+dom.homeSearchInput?.addEventListener('keydown', (event) => {
+    handleSearchInputKeydown(event, dom.homeSearchResults, {
+        onEscape: () => {
+            dom.homeSearchResults?.classList.add('hidden');
+            dom.homeSearchInput?.blur();
+        }
+    });
+});
+
 dom.modalSearchInput?.addEventListener('input', () => {
     const query = dom.modalSearchInput.value;
     if (!query.trim()) {
@@ -283,6 +300,15 @@ dom.modalSearchInput?.addEventListener('input', () => {
     }
     const matches = performDatabaseSearch(query);
     renderSearchResults(matches, dom.modalSearchResults);
+});
+
+dom.modalSearchInput?.addEventListener('keydown', (event) => {
+    handleSearchInputKeydown(event, dom.modalSearchResults, {
+        onEscape: () => {
+            dom.modalSearchInput?.blur();
+            closeModal(dom.dbSearchModal);
+        }
+    });
 });
 
 dom.tmdbSearchInput?.addEventListener('input', () => {

@@ -38,6 +38,8 @@ export const dom = {
     allPages: [homePage, ratedPage, moviePage, personPage],
 
     // Home Page: Search & Below-the-Fold Catalog
+    adminViewToggleWrap: document.getElementById('admin-view-toggle-wrap'),
+    guestPreviewToggle: document.getElementById('guest-preview-toggle'),
     homeSearchForm: document.getElementById('home-search-form'),
     homeSearchInput: document.getElementById('home-search-input'),
     homeSearchResults: document.getElementById('home-search-results'),

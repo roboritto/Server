@@ -139,6 +139,18 @@
             <!-- Page 1: Home Page -->
             <section id="home-page" class="page-view">
                 
+                <!-- Admin / Guest Preview Switch (Home Page Top-Right, Admin-Only) -->
+                <div id="admin-view-toggle-wrap" class="hidden">
+                    <label class="view-mode-switch" for="guest-preview-toggle" title="Switch between Admin and Guest view">
+                        <span class="view-mode-label view-mode-admin">Admin</span>
+                        <input type="checkbox" id="guest-preview-toggle" aria-label="Preview site as guest">
+                        <span class="view-mode-track">
+                            <span class="view-mode-thumb"></span>
+                        </span>
+                        <span class="view-mode-label view-mode-guest">Guest</span>
+                    </label>
+                </div>
+                
                 <!-- Full-Viewport Hero Section (Only search bar visible until scrolled) -->
                 <div id="home-hero-section">
                     <form id="home-search-form">

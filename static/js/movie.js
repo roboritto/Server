@@ -145,6 +145,10 @@ export function renderMovieCollections(movie) {
         matchingMovies.forEach((colMovie) => {
             const cardEl = document.createElement('div');
             cardEl.className = 'collection-card';
+            cardEl.dataset.movieId = String(colMovie.movie_id);
+            if (colMovie.is_hidden) {
+                cardEl.classList.add('is-hidden-movie');
+            }
             if (String(colMovie.movie_id) === String(movie.movie_id)) {
                 cardEl.classList.add('current-collection-movie');
             }
@@ -224,14 +228,14 @@ async function handleDownloadLocalFile(movieId, filePath, btnEl) {
     }
 }
 
-export function openMoviePage(movieId, recordHistory = true) {
+export function openMoviePage(movieId, recordHistory = true, historyMeta = {}) {
     const movie = state.moviesDatabase.find((m) => String(m.movie_id) === String(movieId));
     if (!movie || !dom.moviePage) return;
 
     updateHideMovieButtonState(Boolean(movie.is_hidden));
 
     if (recordHistory && (state.currentPage !== 'movie-page' || String(state.currentMovieId) !== String(movieId))) {
-        pushCurrentStateToHistory();
+        pushCurrentStateToHistory(historyMeta);
     }
 
     state.currentMovieId = String(movie.movie_id);
@@ -444,6 +448,11 @@ export async function handleToggleHideMovie() {
         if (rawRow) rawRow.is_hidden = isNowHidden;
 
         updateHideMovieButtonState(isNowHidden);
+        document
+            .querySelectorAll(
+                `.movie-card[data-movie-id="${targetId}"], .collection-card[data-movie-id="${targetId}"]`
+            )
+            .forEach((el) => el.classList.toggle('is-hidden-movie', isNowHidden));
     } catch (error) {
         console.error('Error toggling movie visibility:', error);
         alert(error.message || 'Failed to update movie visibility.');

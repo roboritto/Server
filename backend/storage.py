@@ -103,8 +103,11 @@ def get_client_ip(request: Request) -> str:
 def get_hidden_ids_for_request(request: Request) -> set[str]:
     """
     Returns hidden movie IDs for the requesting IP.
-    ADMIN_IPS and IPs listed in allowed_ips bypass the hidden list.
+    ADMIN_IPS and IPs listed in allowed_ips bypass the hidden list,
+    unless an admin explicitly enables Guest Preview mode.
     """
+    if is_guest_preview_request(request):
+        return set(load_hidden_movies_config()["hidden_movies"])
     if is_admin_request(request):
         return set()
 
@@ -164,9 +167,22 @@ ALL_PERMISSION_ACTIONS = (
 )
 
 
-def is_admin_request(request: Request) -> bool:
-    """Returns True if the connecting client's IP is listed in ADMIN_IPS."""
+def is_real_admin_request(request: Request) -> bool:
+    """Returns True if the connecting client's IP is listed in ADMIN_IPS (ignores guest preview)."""
     return get_client_ip(request) in ADMIN_IPS
+
+
+def is_guest_preview_request(request: Request) -> bool:
+    """Returns True when an admin IP explicitly enables Guest Preview via header."""
+    return (
+        is_real_admin_request(request)
+        and request.headers.get("x-preview-guest", "").strip() == "1"
+    )
+
+
+def is_admin_request(request: Request) -> bool:
+    """Returns True if the connecting client is an active admin (not previewing as guest)."""
+    return is_real_admin_request(request) and not is_guest_preview_request(request)
 
 
 def load_public_permissions() -> dict[str, bool]:

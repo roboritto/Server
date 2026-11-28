@@ -15,6 +15,17 @@ import { openMoviePage, renderMovieCollections } from './movie.js';
 import { openPersonPage } from './person.js';
 import { playWelcomeCurtain } from './welcome.js';
 
+export function getAuthHeaders(extra = {}) {
+    const headers = {
+        'x-api-token': state.serverApiToken,
+        ...extra
+    };
+    if (state.isGuestPreview) {
+        headers['x-preview-guest'] = '1';
+    }
+    return headers;
+}
+
 export function isMovieInDatabase(movieId) {
     const idStr = String(movieId);
     return (
@@ -284,7 +295,7 @@ export async function startBackgroundDatabaseLoad() {
     }
 
     try {
-        const authHeaders = { 'x-api-token': state.serverApiToken };
+        const authHeaders = getAuthHeaders();
         const [moviesRes, customRes, cacheRes] = await Promise.all([
             fetch('/api/movies', { method: 'GET', headers: authHeaders }),
             fetch('/api/custom-movies', { method: 'GET', headers: authHeaders }),
@@ -305,6 +316,11 @@ export async function startBackgroundDatabaseLoad() {
 
         const totalMovies = state.rawCsvMovies.length;
         if (totalMovies === 0) {
+            rebuildPeopleIndex();
+            dom.homeRandomSection?.classList.add('hidden');
+            if (dom.homeRandomGrid) dom.homeRandomGrid.innerHTML = '';
+            renderHomeAllMovies();
+            renderRatedMoviesPage();
             dom.topLoadingBarContainer?.classList.add('hidden');
             state.isDatabaseLoaded = true;
             return;
@@ -437,13 +453,81 @@ export async function startBackgroundDatabaseLoad() {
 
 export function applyPermissionsToUi() {
     const perms = state.permissions;
+    const showAdminSwitch = Boolean(state.canPreviewGuest && !state.isDemoMode);
+    dom.adminViewToggleWrap?.classList.toggle('hidden', !showAdminSwitch);
+    dom.adminViewToggleWrap?.classList.toggle('is-guest-mode', Boolean(state.isGuestPreview));
+    if (dom.guestPreviewToggle) {
+        dom.guestPreviewToggle.checked = Boolean(state.isGuestPreview);
+    }
+
     dom.hideMovieBtn?.classList.toggle('hidden', !state.isAdmin);
     dom.navCacheBtn?.classList.toggle('hidden', !state.isAdmin);
+    dom.precacheMovieBtn?.classList.toggle('hidden', !state.isAdmin);
     dom.navAddBtn?.classList.toggle('hidden', !perms.add_movie);
     dom.deleteMovieBtn?.classList.toggle('hidden', !perms.delete);
     dom.openAddLinkModalBtn?.classList.toggle('hidden', !perms.add_link);
     dom.openRatingModalBtn?.classList.toggle('hidden', !perms.edit_rating);
     dom.openCollectionModalBtn?.classList.toggle('hidden', !perms.edit_collection);
+}
+
+export async function setGuestPreviewMode(enabled) {
+    if (!state.canPreviewGuest || state.isDemoMode) return;
+    const nextVal = Boolean(enabled);
+    if (state.isGuestPreview === nextVal || state.isDatabaseLoading) {
+        if (dom.guestPreviewToggle) dom.guestPreviewToggle.checked = state.isGuestPreview;
+        return;
+    }
+
+    state.isGuestPreview = nextVal;
+    if (dom.guestPreviewToggle) {
+        dom.guestPreviewToggle.checked = nextVal;
+        dom.guestPreviewToggle.disabled = true;
+    }
+    dom.adminViewToggleWrap?.classList.toggle('is-guest-mode', nextVal);
+
+    try {
+        const response = await fetch('/api/config', {
+            method: 'GET',
+            headers: getAuthHeaders()
+        });
+        if (!response.ok) {
+            throw new Error('Could not switch view mode.');
+        }
+
+        const data = await response.json();
+        state.isAdmin = Boolean(data.is_admin);
+        state.canPreviewGuest = Boolean(data.can_preview_guest);
+        state.permissions = {
+            ...state.permissions,
+            ...(data.permissions || {})
+        };
+        applyPermissionsToUi();
+
+        // Reload catalog from backend so hidden movies hide/reappear immediately
+        state.isDatabaseLoaded = false;
+        state.hasInitializedHomeRandom = false;
+        state.navigationHistory = [];
+        state.currentMovieId = null;
+        state.currentPersonId = null;
+
+        if (dom.homeSearchInput) dom.homeSearchInput.value = '';
+        if (dom.homeSearchResults) {
+            dom.homeSearchResults.innerHTML = '';
+            dom.homeSearchResults.classList.add('hidden');
+        }
+        if (dom.modalSearchInput) dom.modalSearchInput.value = '';
+        if (dom.modalSearchResults) dom.modalSearchResults.innerHTML = '';
+
+        await startBackgroundDatabaseLoad();
+    } catch (error) {
+        console.error('Guest preview toggle error:', error);
+        state.isGuestPreview = !nextVal;
+        if (dom.guestPreviewToggle) dom.guestPreviewToggle.checked = state.isGuestPreview;
+        dom.adminViewToggleWrap?.classList.toggle('is-guest-mode', state.isGuestPreview);
+        alert('Could not switch between Admin and Guest view.');
+    } finally {
+        if (dom.guestPreviewToggle) dom.guestPreviewToggle.disabled = false;
+    }
 }
 
 export async function verifyAndLoadConfig(token, showWelcome = false) {
@@ -454,9 +538,14 @@ export async function verifyAndLoadConfig(token, showWelcome = false) {
     }
 
     try {
+        const headers = { 'x-api-token': token };
+        if (state.isGuestPreview) {
+            headers['x-preview-guest'] = '1';
+        }
+        
         const response = await fetch('/api/config', {
             method: 'GET',
-            headers: { 'x-api-token': token }
+            headers
         });
 
         if (!response.ok) {
@@ -466,6 +555,7 @@ export async function verifyAndLoadConfig(token, showWelcome = false) {
         const data = await response.json();
         state.tmdbApiKey = data.tmdb_api_key;
         state.isAdmin = Boolean(data.is_admin);
+        state.canPreviewGuest = Boolean(data.can_preview_guest);
         state.permissions = {
             ...state.permissions,
             ...(data.permissions || {})

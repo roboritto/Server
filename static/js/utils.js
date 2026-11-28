@@ -108,6 +108,10 @@ export function triggerDiceRollAnimation(buttonEl) {
 export function createMovieCard(movie, onSelectMovie) {
     const card = document.createElement('div');
     card.className = 'movie-card';
+    card.dataset.movieId = String(movie.movie_id);
+    if (movie.is_hidden) {
+        card.classList.add('is-hidden-movie');
+    }
 
     const posterHtml = movie.poster_path
         ? `<img src="${movie.poster_path}" alt="${movie.title}" class="movie-card-poster" loading="lazy">`

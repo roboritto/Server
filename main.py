@@ -47,6 +47,7 @@ from backend.storage import (
     get_hidden_ids_for_request,
     get_permissions_for_request,
     is_admin_request,
+    is_real_admin_request,
     load_custom_movies,
     load_hidden_movies_config,
     load_tmdb_cache,
@@ -75,10 +76,11 @@ def verify_token(x_api_token: str = Header(...)):
 # --- Config & Metadata Endpoints ---
 @app.get("/api/config", dependencies=[Security(verify_token)])
 def get_config(request: Request):
-    """Passes the TMDB API key, admin flag, and effective IP permissions to the frontend."""
+    """Passes the TMDB API key, admin flags, and effective IP permissions to the frontend."""
     return {
         "tmdb_api_key": TMDB_API_KEY,
         "is_admin": is_admin_request(request),
+        "can_preview_guest": is_real_admin_request(request),
         "permissions": get_permissions_for_request(request),
     }
 

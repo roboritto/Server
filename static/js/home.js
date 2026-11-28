@@ -17,7 +17,9 @@ export function renderHomeRandomMovies() {
 
     dom.homeRandomGrid.innerHTML = '';
     selectedMovies.forEach((movie) => {
-        dom.homeRandomGrid.appendChild(createMovieCard(movie, openMoviePage));
+        dom.homeRandomGrid.appendChild(
+            createMovieCard(movie, (movieId) => openMoviePage(movieId, true, { fromAllMovies: false }))
+        );
     });
 
     dom.homeRandomSection.classList.remove('hidden');
@@ -104,6 +106,40 @@ function jumpToAlphabetSection(alphaKey) {
         top: targetY,
         behavior: 'smooth'
     });
+}
+
+export function scrollToMovieInAllMovies(movieId, fallbackScrollY = 0) {
+    if (!dom.homeAllMoviesGrid) return false;
+
+    const safeId = movieId
+        ? (typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
+            ? CSS.escape(String(movieId))
+            : String(movieId))
+        : '';
+    const targetCard = safeId
+        ? dom.homeAllMoviesGrid.querySelector(`.movie-card[data-movie-id="${safeId}"]`)
+        : null;
+
+    if (targetCard) {
+        const isMobileNav =
+            window.innerWidth <= 768 ||
+            window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+        const navOffset = isMobileNav ? 64 : 0;
+        const rect = targetCard.getBoundingClientRect();
+        const cardTopInDoc = rect.top + window.scrollY;
+        const centerOffset = Math.max(24, (window.innerHeight - navOffset - rect.height) / 2);
+        const targetY = Math.max(0, cardTopInDoc - navOffset - centerOffset);
+
+        window.scrollTo({ top: targetY, behavior: 'auto' });
+        return true;
+    }
+
+    if (fallbackScrollY > 0) {
+        window.scrollTo({ top: fallbackScrollY, behavior: 'auto' });
+        return true;
+    }
+
+    return false;
 }
 
 export function updateFloatingAlphabetVisibility() {
@@ -217,7 +253,9 @@ export function renderHomeAllMovies() {
     }
 
     filteredMovies.forEach((movie) => {
-        const card = createMovieCard(movie, openMoviePage);
+        const card = createMovieCard(movie, (movieId) =>
+            openMoviePage(movieId, true, { fromAllMovies: true })
+        );
         const alphaKey = getMovieAlphaKey(movie.title);
         card.setAttribute('data-alpha-group', alphaKey);
 

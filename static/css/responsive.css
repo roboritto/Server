@@ -40,6 +40,10 @@
         padding: 0 1.25rem;
     }
 
+    #admin-view-toggle-wrap {
+        top: 1.1rem;
+    }
+
     .page-view:not(#home-page) {
         padding-top: 5rem; /* Space for fixed top nav on non-home pages */
     }

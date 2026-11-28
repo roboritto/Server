@@ -1,4 +1,97 @@
 /* --- Home Page: Full-Screen Search Hero --- */
+#home-page {
+    position: relative;
+}
+
+#admin-view-toggle-wrap {
+    position: absolute;
+    top: 1.5rem;
+    right: 0;
+    z-index: 20;
+}
+
+.view-mode-switch {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.4rem 0.7rem;
+    border-radius: 9999px;
+    border: 1px solid var(--border-color);
+    background-color: rgba(30, 41, 59, 0.85);
+    backdrop-filter: blur(8px);
+    cursor: pointer;
+    user-select: none;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+    transition: border-color 0.2s, background-color 0.2s;
+}
+
+.view-mode-switch:hover {
+    border-color: var(--border-hover);
+}
+
+#admin-view-toggle-wrap.is-guest-mode .view-mode-switch {
+    border-color: rgba(245, 158, 11, 0.65);
+    background-color: rgba(245, 158, 11, 0.14);
+}
+
+#guest-preview-toggle {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+    pointer-events: none;
+}
+
+.view-mode-label {
+    font-size: 0.76rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    color: var(--text-muted);
+    transition: color 0.2s;
+}
+
+#admin-view-toggle-wrap:not(.is-guest-mode) .view-mode-admin {
+    color: var(--text-white);
+}
+
+#admin-view-toggle-wrap.is-guest-mode .view-mode-guest {
+    color: #fbbf24;
+}
+
+.view-mode-track {
+    position: relative;
+    width: 36px;
+    height: 20px;
+    border-radius: 9999px;
+    background-color: var(--accent-blue);
+    transition: background-color 0.2s;
+    flex-shrink: 0;
+}
+
+#guest-preview-toggle:checked + .view-mode-track {
+    background-color: #f59e0b;
+}
+
+.view-mode-thumb {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background-color: var(--text-white);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+    transition: transform 0.2s ease;
+}
+
+#guest-preview-toggle:checked + .view-mode-track .view-mode-thumb {
+    transform: translateX(16px);
+}
+
+#guest-preview-toggle:disabled ~ * {
+    opacity: 0.55;
+}
+
 #home-hero-section {
     min-height: 100vh;
     display: flex;

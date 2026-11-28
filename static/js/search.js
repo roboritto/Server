@@ -117,9 +117,75 @@ export function performDatabaseSearch(query) {
     return [...movieResults, ...personResults].slice(0, MAX_SEARCH_RESULTS);
 }
 
+function setActiveSearchResult(containerElement, nextIndex, { scroll = true } = {}) {
+    if (!containerElement) return;
+    const items = Array.from(containerElement.querySelectorAll('.search-result-item'));
+    items.forEach((item) => item.classList.remove('active'));
+
+    if (items.length === 0 || nextIndex < 0) {
+        containerElement.dataset.activeIndex = '-1';
+        return;
+    }
+
+    const wrappedIndex = ((nextIndex % items.length) + items.length) % items.length;
+    const activeItem = items[wrappedIndex];
+    activeItem.classList.add('active');
+    containerElement.dataset.activeIndex = String(wrappedIndex);
+
+    if (scroll) {
+        activeItem.scrollIntoView({ block: 'nearest' });
+    }
+}
+
+export function handleSearchInputKeydown(event, containerElement, { onEscape = null } = {}) {
+    if (!containerElement) return;
+
+    const key = event.key;
+    if (key === 'Escape') {
+        event.preventDefault();
+        if (typeof onEscape === 'function') {
+            onEscape();
+        }
+        return;
+    }
+
+    if (key !== 'ArrowDown' && key !== 'ArrowUp' && key !== 'Enter') return;
+
+    const items = containerElement.querySelectorAll('.search-result-item');
+    if (items.length === 0) return;
+
+    const isHidden = containerElement.classList.contains('hidden');
+    if (isHidden) {
+        if (key === 'ArrowDown') {
+            event.preventDefault();
+            containerElement.classList.remove('hidden');
+            const current = parseInt(containerElement.dataset.activeIndex ?? '-1', 10);
+            setActiveSearchResult(containerElement, current >= 0 ? current : 0);
+        }
+        return;
+    }
+
+    const currentIndex = parseInt(containerElement.dataset.activeIndex ?? '-1', 10);
+
+    if (key === 'ArrowDown') {
+        event.preventDefault();
+        const nextIndex = currentIndex < 0 ? 0 : currentIndex + 1;
+        setActiveSearchResult(containerElement, nextIndex);
+    } else if (key === 'ArrowUp') {
+        event.preventDefault();
+        const nextIndex = currentIndex < 0 ? items.length - 1 : currentIndex - 1;
+        setActiveSearchResult(containerElement, nextIndex);
+    } else if (key === 'Enter') {
+        event.preventDefault();
+        const targetIndex = currentIndex >= 0 && currentIndex < items.length ? currentIndex : 0;
+        items[targetIndex]?.click();
+    }
+}
+
 export function renderSearchResults(results, containerElement) {
     if (!containerElement) return;
     containerElement.innerHTML = '';
+    containerElement.dataset.activeIndex = '-1';
 
     if (results.length === 0) {
         const statusMsg = state.isDatabaseLoading
@@ -130,12 +196,21 @@ export function renderSearchResults(results, containerElement) {
         return;
     }
 
-    results.forEach((entry) => {
+    results.forEach((entry, index) => {
         const row = document.createElement('div');
         row.className = 'search-result-item';
 
+        row.addEventListener('mousemove', () => {
+            if (!row.classList.contains('active')) {
+                setActiveSearchResult(containerElement, index, { scroll: false });
+            }
+        });
+
         if (entry.resultType === 'movie') {
             const movie = entry.item;
+            if (movie.is_hidden) {
+                row.classList.add('is-hidden-movie');
+            }
             const posterHtml = movie.poster_path
                 ? `<img src="${movie.poster_path}" alt="${movie.title}" class="search-result-poster">`
                 : `<div class="search-result-poster search-result-placeholder">No Poster</div>`;
@@ -184,4 +259,5 @@ export function renderSearchResults(results, containerElement) {
     });
 
     containerElement.classList.remove('hidden');
+    setActiveSearchResult(containerElement, 0, { scroll: false });
 }

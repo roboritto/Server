@@ -455,6 +455,14 @@
     border-color: var(--text-white);
 }
 
+.collection-card.is-hidden-movie {
+    filter: brightness(0.42) saturate(0.7);
+}
+
+.collection-card.is-hidden-movie:hover {
+    filter: brightness(0.58) saturate(0.8);
+}
+
 .collection-card-overlay {
     width: 100%;
     padding: 2rem 0.85rem 0.75rem 0.85rem;

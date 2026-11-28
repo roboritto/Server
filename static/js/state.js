@@ -5,6 +5,8 @@ export const state = {
     // Auth & Keys
     isDemoMode: false,
     isAdmin: false,
+    canPreviewGuest: false,
+    isGuestPreview: false,
     serverApiToken: localStorage.getItem(TOKEN_STORAGE_KEY) || '',
     tmdbApiKey: '',
     permissions: {

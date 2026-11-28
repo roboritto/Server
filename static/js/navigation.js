@@ -1,6 +1,6 @@
 import { state } from './state.js';
 import { dom } from './dom.js';
-import { updateFloatingAlphabetVisibility } from './home.js';
+import { updateFloatingAlphabetVisibility, scrollToMovieInAllMovies } from './home.js';
 import { renderRatedMoviesPage } from './rated.js';
 import { openMoviePage } from './movie.js';
 import { openPersonPage } from './person.js';
@@ -59,11 +59,27 @@ export function updateBackButtonVisibility() {
     }
 }
 
-export function pushCurrentStateToHistory() {
+function isViewingAllMoviesSection() {
+    if (state.currentPage !== 'home-page' || !dom.homeAllMoviesSection) return false;
+    if (dom.homeAllMoviesSection.classList.contains('hidden')) return false;
+    const rect = dom.homeAllMoviesSection.getBoundingClientRect();
+    return rect.top <= 140 && rect.bottom > 0;
+}
+
+export function pushCurrentStateToHistory(meta = {}) {
+    const inAllMoviesSection =
+        state.currentPage === 'home-page'
+            ? (typeof meta.fromAllMovies === 'boolean'
+                ? meta.fromAllMovies
+                : isViewingAllMoviesSection())
+            : false;
+
     state.navigationHistory.push({
         pageId: state.currentPage,
         movieId: state.currentMovieId,
-        personId: state.currentPersonId
+        personId: state.currentPersonId,
+        inAllMoviesSection,
+        scrollY: window.scrollY
     });
 }
 
@@ -73,6 +89,8 @@ export function goBackPage() {
         return;
     }
 
+    const leavingPage = state.currentPage;
+    const leavingMovieId = state.currentMovieId;
     const prevState = state.navigationHistory.pop();
 
     if (prevState.pageId === 'movie-page' && prevState.movieId) {
@@ -84,11 +102,26 @@ export function goBackPage() {
             'home-page': dom.navHomeBtn,
             'rated-page': dom.navRatedBtn
         };
-        navigateToPage(prevState.pageId, btnMap[prevState.pageId] || null, false);
+        const shouldSkipToMovie =
+            leavingPage === 'movie-page' &&
+            prevState.pageId === 'home-page' &&
+            Boolean(prevState.inAllMoviesSection);
+
+        navigateToPage(prevState.pageId, btnMap[prevState.pageId] || null, false, {
+            preserveScroll: shouldSkipToMovie
+        });
+
+        if (shouldSkipToMovie) {
+            const scrolled = scrollToMovieInAllMovies(leavingMovieId, prevState.scrollY || 0);
+            if (!scrolled) {
+                window.scrollTo(0, 0);
+            }
+            updateMobileNavVisibility();
+        }
     }
 }
 
-export function navigateToPage(targetPageId, activeBtn, recordHistory = true) {
+export function navigateToPage(targetPageId, activeBtn, recordHistory = true, options = {}) {
     if (recordHistory && targetPageId !== state.currentPage) {
         pushCurrentStateToHistory();
     }
@@ -120,7 +153,9 @@ export function navigateToPage(targetPageId, activeBtn, recordHistory = true) {
         renderRatedMoviesPage();
     }
 
-    window.scrollTo(0, 0);
+    if (!options.preserveScroll) {
+        window.scrollTo(0, 0);
+    }
     updateMobileNavVisibility();
     updateBackButtonVisibility();
 }
