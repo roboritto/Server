@@ -177,6 +177,9 @@ export const dom = {
     // Modal 9: Admin Cache Queue
     cacheQueueModal: document.getElementById('cache-queue-modal'),
     closeCacheQueueBtn: document.getElementById('close-cache-queue-btn'),
+    cacheStorageUsage: document.getElementById('cache-storage-usage'),
+    cacheStorageCounts: document.getElementById('cache-storage-counts'),
+    clearStreamCacheBtn: document.getElementById('clear-stream-cache-btn'),
     cacheIncludeMobileBurn: document.getElementById('cache-include-mobile-burn'),
     queueAllUncachedBtn: document.getElementById('queue-all-uncached-btn'),
     cancelPrecacheQueueBtn: document.getElementById('cancel-precache-queue-btn'),

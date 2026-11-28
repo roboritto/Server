@@ -19,6 +19,7 @@ from backend.downloads import (
 from backend.streaming import (
     cancel_precache_queue,
     cancel_prepare_job,
+    clear_stream_cache,
     create_local_stream_ticket,
     detach_ticket_from_prepare_jobs,
     extract_pgs_track_sup,
@@ -585,6 +586,19 @@ def cancel_admin_precache_queue(request: Request):
     if not is_admin_request(request):
         raise HTTPException(status_code=403, detail="Admin access required")
     return {"status": "ok", "queue_status": cancel_precache_queue()}
+
+
+@app.post("/api/admin/precache/clear-cache", dependencies=[Security(verify_token)])
+def clear_admin_stream_cache(request: Request):
+    """Deletes finished cached MP4 and PGS subtitle files from .stream_cache/ (admin-only)."""
+    if not is_admin_request(request):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    result = clear_stream_cache()
+    return {
+        "status": "ok",
+        **result,
+        "queue_status": get_precache_queue_status(),
+    }
 
 
 # --- Direct Movie URL Deep-Link & Static Web App ---

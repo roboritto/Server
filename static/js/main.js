@@ -65,7 +65,8 @@ import {
     openPrecacheQueueModal,
     closePrecacheQueueModal,
     handleQueueAllUncached,
-    handleCancelPrecacheQueue
+    handleCancelPrecacheQueue,
+    handleClearStreamCache
 } from './precache.js';
 
 // --- 1. Auth Listeners ---
@@ -185,6 +186,7 @@ dom.cacheQueueModal?.addEventListener('click', (event) => {
 });
 dom.queueAllUncachedBtn?.addEventListener('click', handleQueueAllUncached);
 dom.cancelPrecacheQueueBtn?.addEventListener('click', handleCancelPrecacheQueue);
+dom.clearStreamCacheBtn?.addEventListener('click', handleClearStreamCache);
 dom.videoPlayerModal?.addEventListener('click', (event) => {
     if (event.target === dom.videoPlayerModal) {
         closeVideoPlayerModal();

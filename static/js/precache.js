@@ -38,6 +38,14 @@ function includeMobileBurnSelected() {
     return dom.cacheIncludeMobileBurn ? Boolean(dom.cacheIncludeMobileBurn.checked) : true;
 }
 
+function formatBytes(bytes) {
+    const val = Math.max(0, Number(bytes) || 0);
+    if (val < 1024) return `${val} B`;
+    if (val < 1024 ** 2) return `${(val / 1024).toFixed(1)} KB`;
+    if (val < 1024 ** 3) return `${(val / (1024 ** 2)).toFixed(1)} MB`;
+    return `${(val / (1024 ** 3)).toFixed(2)} GB`;
+}
+
 function setMovieButtonVisual(cacheState, progress = 0) {
     const btn = dom.precacheMovieBtn;
     if (!btn) return;
@@ -158,6 +166,24 @@ function setQueueSummary(text = '') {
 
 function renderQueueStatus(status) {
     if (!status) return;
+
+    if (status.cache_stats) {
+        const { total_bytes = 0, video_count = 0, subtitle_count = 0, max_gb = 0 } = status.cache_stats;
+        if (dom.cacheStorageUsage) {
+            const usedStr = formatBytes(total_bytes);
+            dom.cacheStorageUsage.textContent = max_gb > 0
+                ? `${usedStr} / ${max_gb} GB`
+                : `${usedStr} (No limit)`;
+        }
+        if (dom.cacheStorageCounts) {
+            const vLabel = video_count === 1 ? 'video' : 'videos';
+            const sLabel = subtitle_count === 1 ? 'PGS sub' : 'PGS subs';
+            dom.cacheStorageCounts.textContent = `${video_count} ${vLabel} • ${subtitle_count} ${sLabel}`;
+        }
+        if (dom.clearStreamCacheBtn) {
+            dom.clearStreamCacheBtn.disabled = total_bytes === 0 && video_count === 0 && subtitle_count === 0;
+        }
+    }
 
     const isRunning = Boolean(status.running || status.current || status.queued_count > 0);
     dom.navCacheBtn?.classList.toggle('has-active-queue', isRunning);
@@ -367,5 +393,53 @@ export async function handleCancelPrecacheQueue() {
         console.error('Cancel pre-cache queue error:', error);
     } finally {
         if (dom.cancelPrecacheQueueBtn) dom.cancelPrecacheQueueBtn.disabled = false;
+    }
+}
+
+export async function handleClearStreamCache() {
+    if (!state.isAdmin || state.isDemoMode) return;
+    const confirmed = window.confirm(
+        'Clear all cached MP4 videos and PGS subtitle files from .stream_cache?\n\nActive conversions will keep running.'
+    );
+    if (!confirmed) return;
+
+    if (dom.clearStreamCacheBtn) {
+        dom.clearStreamCacheBtn.disabled = true;
+        dom.clearStreamCacheBtn.textContent = 'Clearing...';
+    }
+
+    try {
+        const res = await fetch('/api/admin/precache/clear-cache', {
+            method: 'POST',
+            headers: { 'x-api-token': state.serverApiToken }
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            throw new Error(data.detail || 'Could not clear stream cache.');
+        }
+
+        if (data.queue_status) renderQueueStatus(data.queue_status);
+
+        const freedStr = formatBytes(data.freed_bytes || 0);
+        const skippedNote = data.skipped_in_use > 0
+            ? ` (${data.skipped_in_use} in-use file(s) skipped)`
+            : '';
+        setQueueSummary(
+            `Cleared ${data.deleted_videos || 0} video(s) and ${data.deleted_subtitles || 0} PGS file(s) — freed ${freedStr}.${skippedNote}`
+        );
+
+        if (state.currentPage === 'movie-page' && state.currentMovieId) {
+            const movie = state.moviesDatabase.find(
+                (m) => String(m.movie_id) === String(state.currentMovieId)
+            );
+            if (movie) refreshMoviePrecacheButton(movie);
+        }
+    } catch (error) {
+        console.error('Clear stream cache error:', error);
+        setQueueSummary(error.message || 'Failed to clear cache.');
+    } finally {
+        if (dom.clearStreamCacheBtn) {
+            dom.clearStreamCacheBtn.textContent = 'Clear Cache';
+        }
     }
 }
